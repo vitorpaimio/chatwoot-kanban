@@ -1,193 +1,212 @@
-# Kanban dentro do Chatwoot
+<p align="center">
+  <img src="docs/assets/readme-cover.svg" alt="Chatwoot Kanban — conversas, negociações e próximos passos no mesmo lugar" width="100%">
+</p>
 
-Quadros, múltiplos funis, tarefas, histórico e relatórios integrados ao **Chatwoot 4.16.2**.
-Acesse **http://localhost:3000**, entre no Chatwoot e clique em **Pipeline → Kanban** no menu lateral.
-O grupo também contém **Métricas**, com os relatórios por funil, etapa e agente.
-O quadro herda a fonte e as cores do Chatwoot, inclusive ao trocar de tema.
-A interface é em português do Brasil e usa a sessão e as permissões da conta selecionada.
+<p align="center">
+  <strong>Transforme o atendimento em um fluxo de trabalho visível.</strong><br>
+  Funis, tarefas e métricas dentro do Chatwoot, com a sessão da sua equipe.
+</p>
 
-O código original do Chatwoot é preservado. Um loader registrado em `DASHBOARD_SCRIPTS`
-abre o quadro incorporado pelo menu lateral. Não instala abas dentro das conversas.
+<p align="center">
+  <a href="docs/plano-0.2.0.md"><img src="https://img.shields.io/badge/status-em_desenvolvimento-6366f1?style=flat-square" alt="Em desenvolvimento"></a>
+  <a href="docs/fase-1-autorizacao.md"><img src="https://img.shields.io/badge/Chatwoot_CE-4.16.2_%7C_4.18.0-1f93ff?style=flat-square" alt="Contratos testados no Chatwoot CE 4.16.2 e 4.18.0"></a>
+  <img src="https://img.shields.io/badge/interface-pt--BR-14b8a6?style=flat-square" alt="Interface em português do Brasil">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licença-MIT-64748b?style=flat-square" alt="Licença MIT"></a>
+</p>
 
-## Executar nesta máquina
+<p align="center">
+  <a href="#o-que-você-pode-fazer">Funcionalidades</a> ·
+  <a href="#por-dentro-do-pipeline">Prévia</a> ·
+  <a href="#começar-no-ambiente-local">Instalação</a> ·
+  <a href="docs/README.md">Documentação</a> ·
+  <a href="CONTRIBUTING.md">Contribuir</a>
+</p>
 
-Os bancos do Kanban são `kanban_development` e `kanban_test`. O Chatwoot continua
-usando `chatwoot_dev`; não execute seed novamente.
+---
 
-```sh
-cd /Users/paim/chatwoot-kanban
-scripts/local.sh status
-scripts/local.sh stop
-scripts/local.sh start
+## O que você pode fazer
+
+Organize negociações em **Pipeline → Kanban** e acompanhe os resultados em
+**Pipeline → Métricas**, no menu lateral do Chatwoot. A interface acompanha o tema
+claro ou escuro e mantém o contexto da conta selecionada.
+
+| | Recurso | No dia a dia |
+| :---: | --- | --- |
+| 🗂️ | **Múltiplos funis** | Organize etapas, arraste cartões e acompanhe o valor de cada negociação. |
+| ✅ | **Tarefas compartilhadas** | Crie, edite e conclua a tarefa do contato, com vencimento e indicação de atraso. |
+| 💬 | **Conversa vinculada** | Siga a conversa de atividade mais recente ou fixe outra no cartão. |
+| 📊 | **Métricas e CSV** | Compare períodos e analise ganhos, perdas, origens, equipe e atendimento. |
+| 🕓 | **Histórico** | Consulte movimentos e ações, com filtros por contato, funil, etapa e autor. |
+| 🔐 | **Acesso por caixa** | Cada agente acessa os cartões permitidos pela sua sessão no Chatwoot. |
+
+Um contato pode participar de vários funis. A tarefa ativa é compartilhada por
+contato e conta. Negociações são criadas manualmente; a importação de contatos é
+uma ação separada da ativação.
+
+## Por dentro do Pipeline
+
+<p align="center">
+  <img src="docs/evidencias/metricas/escuro.png" alt="Painel de métricas integrado ao Chatwoot: indicadores de vendas e gráficos por etapa no tema escuro" width="100%">
+  <br>
+  <sub>Captura do ambiente de desenvolvimento. A apresentação visual não representa certificação de produção.</sub>
+</p>
+
+<details>
+<summary><strong>☀️ Ver o painel no tema claro</strong></summary>
+
+<p align="center">
+  <img src="docs/evidencias/metricas/claro.png" alt="Painel de métricas do Pipeline no tema claro" width="100%">
+</p>
+
+</details>
+
+**Ganhos e receita · Conversão · Tempo na etapa · Motivos de perda · Tarefas · Atendimento**
+
+Os relatórios usam datas civis de Brasília e valores em reais. Cada bloco pode ser
+exportado em CSV. Consulte o [guia de métricas](docs/metricas.md) para conhecer as
+fórmulas, os filtros e os limites de cada indicador.
+
+## Como funciona
+
+```mermaid
+flowchart LR
+    A["Chatwoot\nSessão da equipe"] --> B["Pipeline\nKanban e métricas"]
+    B --> C["API FastAPI\nAutorização por conta e caixa"]
+    C --> D[("PostgreSQL\nCartões, tarefas e histórico")]
+    D --> E["Worker\nFila de sincronização"]
+    E --> F["API do Chatwoot\nAtributos espelho"]
+    F -->|Webhooks| C
+    C -->|SSE| B
 ```
 
-O script inicia Rails em 3001, FastAPI em 8000, worker, Sidekiq e Nginx em 3000.
-Reutiliza o Vite existente na porta 3036; se não houver um, inicia também o Vite.
-PostgreSQL e Redis precisam estar em execução. As variáveis do banco Kanban são
-removidas do ambiente antes de iniciar Rails, Sidekiq e Vite.
+O loader registrado em `DASHBOARD_SCRIPTS` incorpora a interface ao Chatwoot,
+preservando seu código-fonte. Cartões e tarefas têm autoridade local; o worker
+sincroniza os atributos espelho e tenta novamente quando há falhas temporárias.
+Alterações concorrentes retornam conflito para evitar sobrescritas silenciosas.
 
-## Usar
-
-- Selecione um funil; arraste cartões entre etapas e dentro de uma coluna.
-- **Adicionar negociação** abre a busca de contatos da conta; selecione o contato, o funil e a etapa.
-- Clique no cartão para abrir detalhes; ali você pode abrir a conversa ou o cadastro do contato.
-- **Detalhes** permite mudar a etapa e o valor. **Tarefa** cria, edita e conclui a tarefa.
-- Um contato pode participar de vários funis, mas sua tarefa ativa é compartilhada.
-- Administradores podem gerenciar funis/etapas, repetir importações e tentar sincronizar novamente.
-- Consulte **Histórico** e **Relatórios**; ganhos ÷ (ganhos + perdas) define a conversão.
-- Tarefas vencem durante toda a data escolhida em Brasília; ficam atrasadas no dia seguinte.
-- O acesso ao Kanban fica exclusivamente no menu **Pipeline**.
-
-O banco Kanban é a referência de cartões e tarefas. Uma falha temporária no Chatwoot
-aparece como sincronização pendente/falha, e o worker tenta novamente. Alterações
-concorrentes retornam conflito em vez de sobrescrever silenciosamente o trabalho de alguém.
-
-## Instalação, migração e infraestrutura
-
-- [Instalação local e desinstalação](docs/instalacao-local.md)
-- [Backup, recuperação e dados legados](docs/backup-recuperacao.md)
-- [Swarm/Traefik, preparado para implantação futura](docs/implantacao-swarm.md)
-- [Decisões da integração](docs/adr/020-integracao-nativa-sessao.md)
-- [Validação desta entrega](docs/validacao-integracao.md)
-
-## Testes
-
-```sh
-.venv/bin/ruff check app migrations scripts tests
-DATABASE_URL=postgresql://paim@localhost:5432/kanban_test .venv/bin/alembic upgrade head
-.venv/bin/pytest -q
-node --test tests/test_interface.cjs
-node --check app/static/kanban.js
-node --check app/static/loader.js
-```
-
-Os testes Python usam PostgreSQL real e truncam somente as tabelas `kb_*` do banco
-configurado por `TEST_DATABASE_URL`, que deve ser exclusivo de testes.
-O teste de navegador exige Chatwoot local, Chrome e Playwright; cria contatos/funis de teste:
-
-```sh
-npm ci
-# Configure CHATWOOT_LOGIN_EMAIL e CHATWOOT_LOGIN_PASSWORD no ambiente
-# com credenciais de uma conta exclusiva de testes. Não coloque a senha no comando.
-node tests/browser/live.cjs
-```
-
-Os testes de navegador exigem as duas variáveis e não têm credenciais padrão.
-Carregue-as por entrada protegida ou pelo gerenciador de segredos do ambiente.
-Sessões permanecem em memória e não são enviadas por `postMessage`.
-
-## Licença
-
-[MIT](LICENSE). Atribuição original: Copyright (c) 2026 Chatwoot-Kanban contributors.
-Licença recuperada do [repositório original](https://github.com/CrisAlva1414/Chatwoot-Kanban/blob/main/LICENSE).
-
-## Métricas do Pipeline
-
-Abra **Pipeline → Métricas** dentro do Chatwoot. O endereço incorporado é
-`/kanban/metricas?account=N`. Funil, período, responsável e caixa de entrada ficam
-na URL do iframe. Os atalhos usam datas civis em `America/Sao_Paulo`; o fim escolhido
-é inclusivo. Cada bloco tem exportação CSV e comparação com o intervalo imediatamente
-anterior, com a mesma quantidade de dias. Os filtros se aplicam à conta autenticada.
-
-| Indicador | Definição |
+| Camada | Tecnologia |
 | --- | --- |
-| Lead novo | Card criado no período. |
-| Ganho / Perdido | Card que entrou numa etapa `kind=won` / `kind=lost` no período. |
-| Taxa de ganho | Ganhos / (ganhos + perdidos) do período. |
-| Em andamento | Cards em etapas `kind=open` no fim do período. |
-| Ticket médio | Soma do valor dos ganhos / número de ganhos. |
-| Valor em aberto | Soma do valor dos cards em andamento. |
-| Ciclo médio | Média de (data do ganho − data de criação) dos ganhos do período. |
-| Conversão entre etapas | Dos cards que entraram na etapa X no período, percentual que depois entrou em qualquer etapa posterior do mesmo funil. |
-| Tempo médio na etapa | Média da permanência, calculada pelos eventos de movimento. |
-| Card parado | Sem movimento nem tarefa concluída há mais de N dias; N é configurável por funil, padrão 7. |
+| API e worker | Python 3.12 · FastAPI · httpx |
+| Persistência | PostgreSQL 16 · asyncpg · Alembic |
+| Interface | HTML · CSS · JavaScript · Chart.js |
+| Atualizações | SSE com listener PostgreSQL compartilhado por processo |
+| Integração local | Nginx · Rails/Sidekiq do Chatwoot |
 
-O mesmo card conta uma vez como ganho e uma vez como perda por período, mesmo com
-reentradas. Receita e ciclo usam a primeira entrada ganha desse período; o valor é o
-registrado nesse evento, não um valor editado posteriormente. Um contato em dois
-funis representa duas negociações. Tarefas são compartilhadas por contato/conta e
-não são duplicadas na contagem.
+## Permissões que acompanham a equipe
 
-Os saldos usam o último evento anterior ao fim do período (ou o estado registrado
-até agora, para períodos futuros). Responsável, caixa, origem e campanha usam esse
-mesmo retrato. A caixa é a da conversa mais recente do contato. Conversão acompanha
-a coorte até agora, inclusive movimentos posteriores ao período selecionado; a coluna
-“Próxima etapa” mede especificamente a etapa seguinte na ordenação atual. Permanência
-considera passagens cuja saída ocorreu no período; passagens ainda abertas não entram
-na média. Reclassificar uma etapa atualiza o saldo sem inventar entrada ganha/perdida.
+- **Administradores:** acesso aos cartões da conta e às configurações administrativas.
+- **Agentes:** cartões cuja conversa vinculada pertence a uma caixa permitida.
+- **Sem conversa:** cartão visível ao administrador e ao criador, sem canal ou atalho.
+- **Contatos e tarefas:** seguem a visibilidade de contatos do Chatwoot Community Edition.
+- **Conta desativada:** bloqueia dados, webhooks e novas unidades de trabalho do worker.
 
-Percentuais sem denominador mostram **0%**; médias sem amostra mostram **sem dados**.
-Variação = (atual − anterior) / |anterior| × 100. Dois zeros produzem 0%; com base
-anterior zero e valor atual positivo, a variação é indefinida e mostra **sem dados
-no período anterior**. Setas usam as cores semânticas do tema, invertendo o sentido
-favorável para perdas, atrasos e tempos.
+As caixas são consultadas com a sessão do agente, com **cache de até 60 segundos**.
+Falha ou timeout na consulta nega acesso. Histórico de cartões, métricas, CSV e SSE
+respeitam o mesmo escopo. [Detalhes da autorização →](docs/fase-1-autorizacao.md)
 
-### Perdas, atribuição e atendimento
+## Começar no ambiente local
 
-Ao criar ou mover uma negociação para uma etapa perdida, o quadro exige um motivo.
-Administradores configuram a lista em **Gerenciar funis → Motivos de perda**; **Outro**
-exige texto. O motivo fica no card e no evento, junto à etapa de saída. Movimentos
-externos/legados sem motivo são apresentados como **Não informado**. Alterar a etapa
-novamente preserva o motivo no histórico, limpando o motivo atual ao sair de perdido.
+> **Em desenvolvimento:** a release pública **0.2.0** está em preparação.
+> Os contratos foram testados no Chatwoot CE **4.16.2 e 4.18.0**. Instalação de
+> produção, carga e fluxo completo de navegador nas duas versões ainda têm etapas
+> de certificação pendentes.
 
-Os atributos de contato **origem**, **campanha** e, opcionalmente, **temperatura** são
-copiados na criação do card e atualizados pelos webhooks, inclusive quando limpos.
-Preencha-os no Chatwoot manualmente, por automação ou n8n; isso não cria endpoints nem
-uma integração n8n neste aplicativo. Origem e campanha têm tabelas separadas,
-ordenáveis. Temperatura só aparece quando a conta define o atributo de contato ou já possui valores importados.
-
-Atendimento usa `/api/v2/accounts/{id}/reports/summary`, `/reports` e os eventos
-paginados de `/reports/drilldown`, com cache no backend de **5 minutos**, isolado por
-conta e filtros. Os tempos são agregados em SQL sobre os eventos, evitando média de
-médias. Conversas abertas, sem resposta e maior espera representam a **situação atual**:
-a API nativa não expõe seus saldos históricos; a tela explica essa limitação e não
-inventa comparação anterior. Conversas criadas, primeira resposta e resolução têm
-comparação por período. A maior espera abre a conversa dentro do Chatwoot.
-
-### API, atualização e recuperação
-
-`GET /kanban/metrics/{summary|funnel|losses|sources|service|team|tasks|timeline}` exige
-sessão Chatwoot e conta autorizada. Parâmetros: `account`, `start`, `end` (YYYY-MM-DD),
-`funnel_id`, `assignee_id`, `inbox_id`; `format=csv` exporta cada bloco, incluindo
-período anterior, em colunas `campo;valor`, com BOM UTF-8 e proteção de fórmulas.
-O intervalo máximo é 366 dias. Agregações do Pipeline são SQL no PostgreSQL.
-
-As migrações 004/005 acrescentam dimensões, eventos temporais e índices por
-`(account_id, created_at)`. Antes de atualizar, faça backup e rode
-`.venv/bin/alembic upgrade head`. Não há alteração automática de schema no startup.
-Para atualizar metadados dos contatos já instalados, sem mover cards, execute:
+Tenha um Chatwoot local preparado, Python 3.12, PostgreSQL 16, Redis, Node.js,
+Ruby e as dependências descritas no [guia de instalação](docs/instalacao-local.md).
+O ambiente local também utiliza Overmind e Nginx.
 
 ```sh
-PYTHONPATH=. .venv/bin/python scripts/refresh_metric_dimensions.py
+git clone https://github.com/vitorpaimio/chatwoot-kanban.git
+cd chatwoot-kanban
+
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt -r requirements-dev.txt
+cp .env.example .env
 ```
 
-O histórico antigo só é reconstruído a partir de movimentos efetivamente registrados.
-Dimensões/valores ausentes continuam desconhecidos; o retrato atual começa na migração.
-Não são inventadas durações anteriores à importação. O backup local desta atualização
-está em `.local/antes-metricas-004.dump`; restauração exige parada dos serviços e o
-procedimento em [backup e recuperação](docs/backup-recuperacao.md). O código anterior
-pode rodar mantendo as colunas aditivas; remover o histórico novo exige restauração.
+Configure `.env` com o banco **exclusivo do Kanban**, as URLs e a chave de
+criptografia. O repositório atualmente é privado; o clone exige acesso autorizado.
 
-Os gráficos usam [Chart.js 4.5.1](https://www.chartjs.org/docs/latest/getting-started/integration.html),
-servido pelo próprio aplicativo em `/kanban/static/vendor/chart.umd.js`, sem CDN.
-A [licença MIT do Chart.js](app/static/vendor/Chart.LICENSE.md) acompanha o arquivo.
-Cores, fontes, gráficos e tooltips herdam as variáveis do Chatwoot, incluindo o tema
-escuro. Dados de usuários são inseridos com `textContent`, sem interpolação de HTML.
+```sh
+# Depois de configurar o ambiente:
+.venv/bin/alembic upgrade head
+```
 
-## Estado da Fase 1
+Conclua a configuração do loader e do proxy seguindo o
+[guia local](docs/instalacao-local.md). Depois:
 
-Agentes acessam cartões pela caixa da conversa vinculada, com permissões consultadas
-na própria sessão e cache de até 60 segundos. Falhas de consulta negam acesso.
-Contatos/tarefas compartilhadas seguem ContactPolicy CE; cartão sem conversa fica
-visível ao administrador e ao criador. Conta desativada bloqueia dados e worker.
+```sh
+scripts/local.sh start
+scripts/local.sh status
+```
 
-Ativação não importa contatos automaticamente. O responsável pode importar metadados
-separadamente; cartões são criados manualmente. A API de tarefa usa `descricao` e
-`vencimento`; os espelhos são `kanban_etapa`, `kanban_tarefa` e
-`kanban_tarefa_vencimento`, somente no contato.
+Abra `http://localhost:3000`, entre no Chatwoot e acesse **Pipeline → Kanban**.
+Um administrador ativa a conta; a importação de contatos pode ser solicitada
+separadamente. Não reutilize o banco do Chatwoot para o Kanban nem execute seeds
+sobre uma instalação existente.
 
-O aplicativo móvel nativo do Chatwoot não exibe Pipeline. A 0.2.0 documenta essa
-limitação; acesso direto móvel não está certificado. Não há volume certificado
-antes dos testes de carga da Fase 3. Consulte [evidências, migração e arquivos
-alterados](docs/fase-1-autorizacao.md). Aplique `alembic upgrade head` antes de executar
-esta versão; startup não cria schema.
+## Qualidade e testes
+
+A [Fase 1](docs/fase-1-autorizacao.md) registrou **71 testes Python**, **3 testes Node**
+e verificações de frontend no Chrome. Os contratos Rails passaram em **10 grupos
+por versão alvo**. Esses números descrevem essa execução, não um status de CI ao vivo.
+
+```sh
+# Banco descartável, exclusivo e com nome terminado em _test.
+: "${TEST_DATABASE_URL:?Configure o banco exclusivo de testes}"
+DATABASE_URL="$TEST_DATABASE_URL" .venv/bin/alembic upgrade head
+
+.venv/bin/ruff check .
+.venv/bin/pytest -q
+npm ci
+node --test tests/test_interface.cjs
+node tests/browser/authorization.cjs
+```
+
+Os testes Python usam PostgreSQL real e removem dados de teste. O teste
+`authorization.cjs` usa Chrome com API controlada. Os roteiros contra Chatwoot
+exigem `CHATWOOT_LOGIN_EMAIL` e `CHATWOOT_LOGIN_PASSWORD` no ambiente e mantêm
+sessões apenas em memória. [Preparar o ambiente de contribuição →](CONTRIBUTING.md)
+
+## Caminho até a 0.2.0
+
+| Etapa | Situação |
+| --- | --- |
+| **Fase 0** — contratos e correções imediatas | Concluída, com limites de evidência documentados |
+| **Fase 1** — autorização e ativação | Implementada e testada |
+| **Fase 2** — recuperação e provisionamento por conta | Planejada |
+| **Fase 3** — paginação e certificação de capacidade | Planejada |
+| **Fase 4** — instalador Swarm + Traefik | Planejada; Compose + Nginx será o segundo adaptador |
+| **Fase 5** — certificação e release pública | Planejada |
+
+O primeiro item após a release será a **criação automática de cartões**, opcional
+por funil e caixa de entrada. Não há volumes de uso certificados antes dos testes
+de carga. O aplicativo móvel nativo do Chatwoot não exibe o menu Pipeline.
+
+[Ver plano completo →](docs/plano-0.2.0.md)
+
+## Documentação
+
+| Para… | Consulte |
+| --- | --- |
+| Instalar e remover a integração local | [Instalação local](docs/instalacao-local.md) |
+| Atualizar, migrar e recuperar dados | [Backup e recuperação](docs/backup-recuperacao.md) |
+| Entender os indicadores | [Guia de métricas](docs/metricas.md) |
+| Revisar as provas de autorização | [Evidências da Fase 1](docs/fase-1-autorizacao.md) |
+| Entender as decisões técnicas | [ADRs](docs/adr/README.md) |
+| Contribuir com o projeto | [CONTRIBUTING](CONTRIBUTING.md) |
+| Relatar uma vulnerabilidade | [Política de segurança](SECURITY.md) |
+
+## Licença e créditos
+
+Distribuído sob a [licença MIT](LICENSE), preservando a atribuição aos
+**Chatwoot-Kanban contributors** e a origem no projeto
+[Chatwoot-Kanban](https://github.com/CrisAlva1414/Chatwoot-Kanban).
+O Chart.js acompanha sua [própria licença MIT](app/static/vendor/Chart.LICENSE.md).
+
+---
+
+<p align="center">
+  <strong>Do primeiro contato ao próximo passo.</strong><br>
+  Feito para equipes que já trabalham no Chatwoot.
+</p>

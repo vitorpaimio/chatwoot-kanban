@@ -8,6 +8,7 @@
 
 - [Auditoria técnica de 23/09/2026](auditoria-2026-09-23.md)
 - [Guia inicial](../README.md)
+- [Guia de métricas](metricas.md)
 - [Convenções](format/README.md)
 - [Demonstração visual](demo/README.md)
 
