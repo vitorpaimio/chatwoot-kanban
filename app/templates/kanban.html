@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Kanban · Chatwoot</title>
+    <link rel="stylesheet" href="/kanban/static/kanban.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div id="funnel-picker" class="funnel-title"></div>
+      <button
+        id="manage"
+        class="icon-button ghost"
+        title="Gerenciar funis"
+        aria-label="Gerenciar funis"
+        hidden
+      >
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path
+            d="m9 3-1 3-3 1-2 4 2 2 1 3 3 1 2 4 3-2 3-1 1-3 3-2-2-4-3-1-1-3Z"
+          />
+          <circle cx="12" cy="12" r="3" />
+        </svg>
+      </button>
+      <span
+        id="connection"
+        class="connection"
+        role="status"
+        aria-label="Conectando…"
+        title="Conectando…"
+        data-state="connecting"
+      ></span>
+    </header>
+    <div id="notice" role="status" hidden></div>
+    <section id="activation" hidden>
+      <h2>Ativar Kanban nesta conta</h2>
+      <p>
+        O token de serviço deve pertencer a um administrador desta conta. Ele
+        será guardado criptografado.
+      </p>
+      <form id="activate-form">
+        <label
+          >Token de serviço<input
+            id="service-token"
+            type="password"
+            required
+            autocomplete="off" /></label
+        ><button>Ativar e importar contatos</button>
+      </form>
+    </section>
+    <nav class="toolbar" aria-label="Ações e filtros do quadro">
+      <button id="add-card" class="primary">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 5v14M5 12h14" /></svg
+        >Adicionar negociação
+      </button>
+      <div class="search">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.3-4.3" />
+        </svg>
+        <input
+          id="search"
+          type="search"
+          aria-label="Buscar contatos"
+          placeholder="Buscar contatos…"
+        />
+      </div>
+      <select id="assignee" aria-label="Responsável">
+        <option value="">Responsável</option>
+      </select>
+      <select id="label" aria-label="Etiqueta">
+        <option value="">Etiqueta</option>
+      </select>
+      <select id="task-filter" aria-label="Filtrar por tarefa">
+        <option value="">Tarefa</option>
+        <option value="none">Sem tarefa</option>
+        <option value="active">Agendadas</option>
+        <option value="today">Vencem hoje</option>
+        <option value="overdue">Vencidas</option>
+      </select>
+      <details id="more-actions" class="more-actions">
+        <summary
+          class="icon-button ghost"
+          aria-label="Mais ações"
+          title="Mais ações"
+        >
+          ⋯
+        </summary>
+        <div class="action-menu">
+          <button id="history">Histórico</button>
+          <button id="reimport" hidden>Importar contatos</button>
+        </div>
+      </details>
+    </nav>
+    <div class="board-status">
+      <span id="summary"></span>
+      <div id="sync-warning" role="status" hidden>
+        <span id="sync-count"></span
+        ><button id="retry" hidden>Repetir sincronização</button>
+      </div>
+    </div>
+    <main id="board" aria-label="Quadro Kanban"></main>
+    <dialog id="dialog">
+      <form id="dialog-form">
+        <div class="dialog-heading">
+          <h2 id="dialog-title"></h2>
+          <button type="button" id="dialog-close" aria-label="Fechar">×</button>
+        </div>
+        <div id="dialog-content"></div>
+        <div class="dialog-actions">
+          <button type="submit" id="dialog-save">Salvar</button>
+        </div>
+      </form>
+    </dialog>
+    <script src="/kanban/static/theme.js"></script>
+    <script src="/kanban/static/helpers.js" defer></script>
+    <script src="/kanban/static/kanban.js" defer></script>
+  </body>
+</html>

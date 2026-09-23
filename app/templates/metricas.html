@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Métricas · Pipeline</title>
+    <link rel="stylesheet" href="/kanban/static/kanban.css" />
+    <link rel="stylesheet" href="/kanban/static/metricas.css" />
+    <script src="/kanban/static/theme.js" defer></script>
+    <script src="/kanban/static/vendor/chart.umd.js" defer></script>
+    <script src="/kanban/static/helpers.js" defer></script>
+    <script src="/kanban/static/metricas.js" defer></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Métricas</h1>
+      <span class="header-context">Pipeline</span
+      ><span id="metrics-status" role="status"></span
+      ><button id="refresh" class="ghost">Atualizar</button>
+    </header>
+    <form id="filters" class="metrics-filters">
+      <label
+        >Funil<select id="funnel-filter">
+          <option value="">Todos os funis</option>
+        </select></label
+      >
+      <label
+        >Período<select id="period">
+          <option value="today">Hoje</option>
+          <option value="yesterday">Ontem</option>
+          <option value="7days">7 dias</option>
+          <option value="month" selected>Este mês</option>
+          <option value="last-month">Mês passado</option>
+          <option value="custom">Personalizado</option>
+        </select></label
+      >
+      <label id="start-label" hidden
+        >De<input id="start" type="date" required /></label
+      ><label id="end-label" hidden
+        >Até<input id="end" type="date" required
+      /></label>
+      <label
+        >Responsável<select id="assignee-filter">
+          <option value="">Todos os responsáveis</option>
+        </select></label
+      >
+      <label
+        >Caixa de entrada<select id="inbox-filter">
+          <option value="">Todas as caixas</option>
+        </select></label
+      >
+    </form>
+    <p id="period-caption" class="period-caption"></p>
+    <p id="filter-warning" class="metrics-error" role="alert" hidden></p>
+    <main id="metrics" class="metrics-page">
+      <section id="summary" class="metric-block" aria-label="Resumo"></section>
+      <section id="funnel" class="metric-block" aria-label="Funil"></section>
+      <section
+        id="losses"
+        class="metric-block"
+        aria-label="Motivos de perda"
+      ></section>
+      <section id="sources" class="metric-block" aria-label="Origem"></section>
+      <section
+        id="service"
+        class="metric-block"
+        aria-label="Atendimento"
+      ></section>
+      <section id="team" class="metric-block" aria-label="Equipe"></section>
+      <section id="tasks" class="metric-block" aria-label="Tarefas"></section>
+      <section
+        id="timeline"
+        class="metric-block"
+        aria-label="Evolução"
+      ></section>
+    </main>
+    <footer class="metrics-footer">
+      Horários de Brasília. Os valores históricos usam os eventos registrados.
+      Dados anteriores à instalação podem ter dimensões ou valores
+      desconhecidos.
+    </footer>
+  </body>
+</html>

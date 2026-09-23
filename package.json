@@ -1,0 +1,9 @@
+{
+  "name": "chatwoot-kanban-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/test_interface.cjs",
+    "test:browser": "node tests/browser/live.cjs"
+  },
+  "devDependencies": { "playwright": "1.63.0" }
+}

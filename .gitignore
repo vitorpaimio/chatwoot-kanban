@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Demonstração local: infraestrutura com dados simulados (não versionada).
+# As capturas de docs/demo/ são versionadas e exibidas no README.
+/demo/
+/docker-compose.demo.yml
+.venv/
+.local/
+*.sock
+node_modules/
+test-results/
+playwright-report/

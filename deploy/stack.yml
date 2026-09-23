@@ -1,0 +1,57 @@
+version: '3.8'
+x-app: &app
+  image: ${KANBAN_IMAGE}
+  environment:
+    DATABASE_URL: ${KANBAN_DATABASE_URL}
+    ENCRYPTION_KEY: ${KANBAN_ENCRYPTION_KEY}
+    CHATWOOT_BASE_URL: ${CHATWOOT_INTERNAL_URL}
+    PUBLIC_URL: https://${CHATWOOT_HOST}
+    ENV: production
+  networks: [kanban, traefik]
+services:
+  api:
+    <<: *app
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.kanban.rule=Host(`${CHATWOOT_HOST}`) && (Path(`/kanban`) || PathPrefix(`/kanban/`))
+        - traefik.http.routers.kanban.priority=200
+        - traefik.http.routers.kanban.entrypoints=websecure
+        - traefik.http.routers.kanban.tls=true
+        - traefik.http.services.kanban.loadbalancer.server.port=8000
+        - traefik.docker.network=traefik
+  worker:
+    <<: *app
+    command: [python, -m, app.worker]
+    healthcheck:
+      disable: true
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: kanban
+      POSTGRES_USER: kanban
+      POSTGRES_PASSWORD_FILE: /run/secrets/kanban_db_password
+    secrets: [kanban_db_password]
+    volumes: [kanban_data:/var/lib/postgresql/data]
+    networks: [kanban]
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.labels.kanban_data == true]
+networks:
+  kanban:
+    driver: overlay
+  traefik:
+    external: true
+volumes:
+  kanban_data:
+secrets:
+  kanban_db_password:
+    external: true

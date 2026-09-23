@@ -1,0 +1,7 @@
+rails: ./scripts/rails-local.sh
+api: .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --timeout-graceful-shutdown 5
+worker: .venv/bin/python -m app.worker
+proxy: ./scripts/proxy-local.sh
+
+sidekiq: ./scripts/sidekiq-local.sh
+vite: ./scripts/vite-local.sh
