@@ -135,3 +135,37 @@ Validação final: Ruff aprovado; **71 testes Python** aprovados em `kanban_test
 **3 testes Node** aprovados; sintaxe de todos os JS/CJS aprovada; Chrome aprovou
 cartão sem canal e limpeza da interface após revogação/expiração. A suíte Rails
 real aprovou 10 grupos em cada versão CE. Fontes do Chatwoot permaneceram intactas.
+
+## Arquivos alterados nesta sessão
+
+- [CONTRIBUTING.md](../CONTRIBUTING.md)
+- [README.md](../README.md)
+- [SECURITY.md](../SECURITY.md)
+- [app/database.py](../app/database.py)
+- [app/events.py](../app/events.py)
+- [app/main.py](../app/main.py)
+- [app/metrics/queries.py](../app/metrics/queries.py)
+- [app/metrics/service.py](../app/metrics/service.py)
+- [app/reporting.py](../app/reporting.py)
+- [app/routers/metrics.py](../app/routers/metrics.py)
+- [app/routers/workspace.py](../app/routers/workspace.py)
+- [app/security.py](../app/security.py)
+- [app/services.py](../app/services.py)
+- [app/static/kanban.js](../app/static/kanban.js)
+- [app/static/metricas.js](../app/static/metricas.js)
+- [app/worker.py](../app/worker.py)
+- [docs/README.md](../docs/README.md)
+- [docs/adr/030-autorizacao-caixas-ativacao.md](../docs/adr/030-autorizacao-caixas-ativacao.md)
+- [docs/adr/README.md](../docs/adr/README.md)
+- [docs/fase-1-autorizacao.md](../docs/fase-1-autorizacao.md)
+- [docs/plano-0.2.0.md](../docs/plano-0.2.0.md)
+- [docs/sesiones/023-2026-09-23-fase-1-autorizacao.md](../docs/sesiones/023-2026-09-23-fase-1-autorizacao.md)
+- [docs/sesiones/README.md](../docs/sesiones/README.md)
+- [migrations/versions/006_authorization.py](../migrations/versions/006_authorization.py)
+- [scripts/migrate_development_attributes.py](../scripts/migrate_development_attributes.py)
+- [tests/browser/authorization.cjs](../tests/browser/authorization.cjs)
+- [tests/browser/live.cjs](../tests/browser/live.cjs)
+- [tests/browser/outage.py](../tests/browser/outage.py)
+- [tests/contracts/chatwoot_phase0.rb](../tests/contracts/chatwoot_phase0.rb)
+- [tests/test_authorization.py](../tests/test_authorization.py)
+- [tests/test_workspace.py](../tests/test_workspace.py)

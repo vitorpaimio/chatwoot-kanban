@@ -173,3 +173,21 @@ servido pelo próprio aplicativo em `/kanban/static/vendor/chart.umd.js`, sem CD
 A [licença MIT do Chart.js](app/static/vendor/Chart.LICENSE.md) acompanha o arquivo.
 Cores, fontes, gráficos e tooltips herdam as variáveis do Chatwoot, incluindo o tema
 escuro. Dados de usuários são inseridos com `textContent`, sem interpolação de HTML.
+
+## Estado da Fase 1
+
+Agentes acessam cartões pela caixa da conversa vinculada, com permissões consultadas
+na própria sessão e cache de até 60 segundos. Falhas de consulta negam acesso.
+Contatos/tarefas compartilhadas seguem ContactPolicy CE; cartão sem conversa fica
+visível ao administrador e ao criador. Conta desativada bloqueia dados e worker.
+
+Ativação não importa contatos automaticamente. O responsável pode importar metadados
+separadamente; cartões são criados manualmente. A API de tarefa usa `descricao` e
+`vencimento`; os espelhos são `kanban_etapa`, `kanban_tarefa` e
+`kanban_tarefa_vencimento`, somente no contato.
+
+O aplicativo móvel nativo do Chatwoot não exibe Pipeline. A 0.2.0 documenta essa
+limitação; acesso direto móvel não está certificado. Não há volume certificado
+antes dos testes de carga da Fase 3. Consulte [evidências, migração e arquivos
+alterados](docs/fase-1-autorizacao.md). Aplique `alembic upgrade head` antes de executar
+esta versão; startup não cria schema.
