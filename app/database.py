@@ -2,6 +2,7 @@ import json
 from contextlib import asynccontextmanager
 
 import asyncpg
+from fastapi import HTTPException
 
 from app.config import settings
 
@@ -28,11 +29,34 @@ async def close_pool():
 
 
 @asynccontextmanager
-async def connection():
+async def connection(user=None):
     if pool is None:
         raise RuntimeError("Banco indisponível")
     async with pool.acquire() as conn:
-        yield conn
+        if user is None:
+            yield conn
+            return
+        async with conn.transaction():
+            await require_enabled(conn, user["account"])
+            for key, value in {
+                "account": str(user["account"]),
+                "actor": str(user["id"]),
+                "role": user["role"],
+                "inboxes": json.dumps(user.get("inboxes", [])),
+            }.items():
+                await conn.execute(
+                    "SELECT set_config($1,$2,true)", "kanban." + key, value
+                )
+            yield conn
+
+
+async def require_enabled(conn, account: int) -> None:
+    """Serializa desativação com requisições e unidades de trabalho em andamento."""
+    enabled = await conn.fetchval(
+        "SELECT enabled FROM kb_accounts WHERE account_id=$1 FOR SHARE", account
+    )
+    if not enabled:
+        raise HTTPException(403, "Conta não habilitada para o Kanban")
 
 
 async def notify(conn, account):

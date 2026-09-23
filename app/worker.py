@@ -15,11 +15,21 @@ from app.services import SYSTEM, projection, refresh_contact, setup_account
 logger = logging.getLogger("kanban.worker")
 
 
+async def work_enabled(conn, account: int) -> bool:
+    """O bloqueio compartilhado dura até concluir a unidade; disable aguarda commit."""
+    return bool(
+        await conn.fetchval(
+            "SELECT enabled FROM kb_accounts WHERE account_id=$1 FOR SHARE", account
+        )
+    )
+
+
 async def tick():
     async with connection() as conn:
         accounts = await conn.fetch(
             """
-        SELECT account_id FROM kb_accounts WHERE activation_status= 'pending'
+        SELECT account_id FROM kb_accounts WHERE enabled AND
+        activation_status= 'pending'
         """
         )
         for row in accounts:
@@ -30,8 +40,11 @@ async def tick():
             if not locked:
                 continue
             try:
-                async with await Chatwoot.for_account(conn, account) as cw:
-                    await setup_account(conn, cw)
+                async with conn.transaction():
+                    if not await work_enabled(conn, account):
+                        continue
+                    async with await Chatwoot.for_account(conn, account) as cw:
+                        await setup_account(conn, cw)
             except Exception as exc:
                 await conn.execute(
                     (
@@ -48,12 +61,15 @@ async def tick():
                 await conn.execute("SELECT pg_advisory_unlock(900000,$1)", account)
         deliveries = await conn.fetch(
             """
-        SELECT id,account_id,contact_id FROM kb_deliveries WHERE status<>
+        SELECT id,account_id,contact_id FROM kb_deliveries WHERE account_id IN
+        (SELECT account_id FROM kb_accounts WHERE enabled) AND status<>
         'processed' AND next_attempt<=now() ORDER BY id LIMIT 30
         """
         )
         for row in deliveries:
             async with conn.transaction():
+                if not await work_enabled(conn, row["account_id"]):
+                    continue
                 delivery = await conn.fetchrow(
                     (
                         """
@@ -98,7 +114,8 @@ async def tick():
                     )
         expired = await conn.fetch(
             """
-        SELECT account_id,contact_id FROM kb_tasks WHERE status= 'active' AND
+        SELECT account_id,contact_id FROM kb_tasks WHERE account_id IN
+        (SELECT account_id FROM kb_accounts WHERE enabled) AND status= 'active' AND
         due_state<> CASE WHEN due_date<(now() AT TIME ZONE 'America/Sao_Paulo'
         )::date THEN 'overdue' WHEN due_date=(now() AT TIME ZONE
         'America/Sao_Paulo' )::date THEN 'today' ELSE 'active' END
@@ -106,6 +123,8 @@ async def tick():
         )
         for task in expired:
             async with conn.transaction():
+                if not await work_enabled(conn, task["account_id"]):
+                    continue
                 await lock_contact(conn, task["account_id"], task["contact_id"])
                 await conn.execute(
                     (
@@ -128,13 +147,16 @@ async def tick():
                 )
         jobs = await conn.fetch(
             """
-        SELECT account_id,contact_id FROM kb_sync WHERE status<> 'synced' AND
+        SELECT account_id,contact_id FROM kb_sync WHERE account_id IN
+        (SELECT account_id FROM kb_accounts WHERE enabled) AND status<> 'synced' AND
         next_attempt<=now() ORDER BY next_attempt LIMIT 30
         """
         )
         for job in jobs:
             account, contact = job["account_id"], job["contact_id"]
             async with conn.transaction():
+                if not await work_enabled(conn, account):
+                    continue
                 await lock_contact(conn, account, contact)
                 job = await conn.fetchrow(
                     (

@@ -1,4 +1,6 @@
+import hashlib
 import json
+import time
 from urllib.parse import unquote
 
 import httpx
@@ -20,6 +22,43 @@ def encrypt(value):
 
 def decrypt(value):
     return cipher().decrypt(value.encode()).decode()
+
+
+INBOX_TTL = 60
+_inbox_cache = {}
+
+
+async def allowed_inboxes(account: int, actor: int, credentials: dict) -> list[int]:
+    """Consulta com sessão humana; cache nunca prolonga o prazo numa falha."""
+    fingerprint = hashlib.sha256(
+        json.dumps(credentials, sort_keys=True).encode()
+    ).digest()
+    key = (account, actor, fingerprint)
+    now = time.monotonic()
+    for old in list(_inbox_cache):
+        if _inbox_cache[old][0] <= now:
+            del _inbox_cache[old]
+    cached = _inbox_cache.get(key)
+    if cached:
+        return cached[1]
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(
+                f"{settings.chatwoot_base_url}/api/v1/accounts/{account}/inboxes",
+                headers=credentials,
+            )
+        response.raise_for_status()
+        payload = response.json()["payload"]
+        if not isinstance(payload, list):
+            raise ValueError("Resposta inválida")
+        ids = [int(row["id"]) for row in payload]
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        _inbox_cache.pop(key, None)
+        raise HTTPException(
+            403, "Não foi possível validar as caixas permitidas"
+        ) from None
+    _inbox_cache[key] = (now + INBOX_TTL, ids)
+    return ids
 
 
 async def identity(request: Request):
@@ -62,7 +101,23 @@ async def identity(request: Request):
     )
     if not membership or membership.get("status") != "active":
         raise HTTPException(403, "Conta não autorizada")
+    if membership.get("role") not in ("administrator", "agent"):
+        raise HTTPException(403, "Papel não autorizado")
+    inboxes = (
+        []
+        if membership["role"] == "administrator"
+        else await allowed_inboxes(account, profile["id"], credentials)
+    )
     return {
+        "inboxes": inboxes,
+        "permission_deadline": min(
+            (
+                v[0]
+                for k, v in _inbox_cache.items()
+                if k[:2] == (account, profile["id"])
+            ),
+            default=time.monotonic() + INBOX_TTL,
+        ),
         "id": profile["id"],
         "name": profile["name"],
         "account": account,
