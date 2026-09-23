@@ -98,7 +98,14 @@ begin
       expect(definitions.all? { |d| d['attribute_display_type'] == 'text' })
       expect(other.custom_attribute_definitions.empty?)
     end
-    contact = Contact.create!(account: account, name: 'Contato sintético', custom_attributes: { kanban_etapa: 'Vendas / Novo' })
+    contact = Contact.create!(account: account, name: 'Contato sintético', email: 'contact@example.test', contact_type: 'lead', custom_attributes: { kanban_etapa: 'Vendas / Novo' })
+    ContactInbox.create!(contact: contact, inbox: inboxes.last, source_id: SecureRandom.uuid)
+    check('contatos_agente_independente_caixa') do
+      request(sessions.last, :get, "#{base}/contacts/#{contact.id}", credentials.last)
+      visible = request(sessions.last, :get, "#{base}/contacts", credentials.last).fetch('payload')
+      expect(visible.any? { |c| c['id'] == contact.id })
+      request(sessions.last, :get, "/api/v1/accounts/#{other.id}/contacts/#{contact.id}", credentials.last, nil, 401)
+    end
     contact_inbox = ContactInbox.create!(contact: contact, inbox: inboxes.first, source_id: SecureRandom.uuid)
     conversation = Conversation.create!(account: account, contact: contact, inbox: inboxes.first, contact_inbox: contact_inbox)
     # O identificador público é preenchido por trigger PostgreSQL.

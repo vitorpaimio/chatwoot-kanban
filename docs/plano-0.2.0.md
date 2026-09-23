@@ -12,9 +12,8 @@ Não reutilizar tags anteriores. Este plano não altera a versão publicada do p
   Validar se `GET /inboxes` realmente retorna esse conjunto nas duas versões.
   Se o contrato falhar, a 0.2.0 será restrita a administradores.
 - A autorização abrange leitura, escrita, exportação, histórico, métricas e SSE.
-  Cache proposto: cinco minutos, por conta e usuário. Definir revogação e acesso a
-  tarefas compartilhadas antes da Fase 1. Cartão sem conversa não satisfaz a
-  política de acesso de agentes; administrador pode vê-lo.
+  Cache aprovado: 60 segundos, por conta e usuário. Falha/timeout nega acesso; janela de revogação de até 60s. Contatos e tarefas
+  seguem ContactPolicy CE; cartões sem conversa são visíveis ao administrador e criador.
 - Conversa vinculada: maior atividade, salvo fixação explícita por cartão.
   Sem conversa: sem canal e sem atalho. Não substituir por atalho ao contato.
 - Etapa e tarefa têm autoridade exclusivamente local. Atributos são espelhos;
@@ -73,8 +72,7 @@ Criar nesta fase `app/provisioning/attributes.py` como catálogo único: chave,
 modelo, tipo, nome exibido, descrição e obrigatoriedade. Contato obrigatório:
 `kanban_etapa` (texto, Funil / Etapa), `kanban_tarefa` (texto),
 `kanban_tarefa_vencimento` (data). Contato opcional: `origem`, `campanha` (texto),
-`temperatura` (lista Frio/Morno/Quente). Conversa opcional: `kanban_etapa` (texto),
-dependente da decisão sobre o segundo espelho.
+`temperatura` (lista Frio/Morno/Quente). Espelho na conversa dispensado; ações imediatas de etapa ficam para I1.
 
 Consultar definições por conta antes de escrever. Registrar cada recurso no
 manifesto como criado ou preexistente. Reutilizar apenas modelo/tipo compatíveis;
@@ -100,8 +98,7 @@ da tarefa editável, SSE com orçamento de conexões e invalidação autorizada;
 certificação medida no volume aprovado. Estabelecer hardware e metas de latência
 antes do ensaio. Sem replicar atendimento nativo não certificado.
 Testes: teclado/toque, conflito, reconexão, rascunhos, carga por conta e 30 sessões,
-consistência de totais e métricas. Se acesso direto móvel for aprovado, tema padrão
-fora de iframe e navegação própria entram aqui.
+consistência de totais e métricas. Na 0.2.0, apenas documentar ausência no aplicativo móvel nativo.
 
 ### Fase 4: instalador Swarm/Traefik e ciclo de vida
 
@@ -148,6 +145,22 @@ nativo; não criar rodízio. Outros ambientes dependem de adaptadores certificad
 | Hardware, metas de latência e duração dos ensaios de carga | 3, 5 |
 | Acesso móvel só documentado ou URL direta com tema padrão | 3, 5 |
 | Usuário de serviço por API de plataforma ou rails runner | 4 |
-| Revogação durante cache de cinco minutos e tarefa compartilhada entre escopos | 1 |
+| Revogação durante cache de 60 segundos e tarefa compartilhada entre escopos | 1 |
 
 Evidências e encaminhamentos serão registrados em `fase-0-contratos-0.2.0.md`.
+
+## Decisões complementares — Fase 1
+
+- ContactPolicy CE 4.16.2/4.18.0 permite leitura de contatos da conta aos agentes;
+  tarefa compartilhada segue contato. Card/movimentos/histórico seguem conversa.
+- Listener PostgreSQL compartilhado por processo; SSE só invalida estado autorizado.
+- Não publicar capacidade como suportada antes da carga na Fase 3.
+- Rails runner é o adaptador padrão (também para DASHBOARD_SCRIPTS); Platform API
+  alternativa com Platform App previamente autorizado.
+- Corte direto para kanban_etapa, kanban_tarefa, kanban_tarefa_vencimento. Sem
+  escrita dupla; script único de migração de desenvolvimento com dry-run/relatório.
+  API interna de tarefas usa descricao e vencimento a partir da Fase 1.
+- GitHub Private Vulnerability Reporting escolhido; habilitação manual pendente.
+- Licença ficou sem seleção no pedido: preservar MIT até decisão explícita.
+
+As decisões acima prevalecem sobre pendências históricas e alternativas da Fase 0.

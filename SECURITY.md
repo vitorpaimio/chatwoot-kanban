@@ -3,12 +3,13 @@
 ## Relato privado
 
 Não publique credenciais, dados pessoais ou detalhes exploráveis em issues públicas.
-O canal privado oficial da release 0.2.0 ainda depende de decisão do mantenedor:
-GitHub Private Vulnerability Reporting/Security Advisories ou e-mail dedicado.
-Não há endereço de e-mail nem prazo de resposta confirmado nesta cópia.
-Antes da publicação, o canal escolhido deve ser habilitado, testado e vinculado aqui.
-Se a opção de relato privado não estiver disponível, solicite ao mantenedor um canal
-privado sem divulgar a vulnerabilidade publicamente.
+O canal escolhido é [GitHub Private Vulnerability Reporting](https://github.com/vitorpaimio/chatwoot-kanban/security/advisories/new).
+
+**TODO do mantenedor:** quando o repositório for público, habilitar Private
+Vulnerability Reporting em Settings → Code security e testar o link acima.
+Enquanto estiver privado ou o recurso não estiver habilitado, o formulário pode
+não estar disponível. Solicite um canal privado ao mantenedor sem publicar detalhes.
+Não há prazo de resposta prometido.
 
 ## Estado de suporte
 
