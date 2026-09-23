@@ -2,6 +2,7 @@
 
 Índice da documentação do Chatwoot-Kanban em português do Brasil.
 
+- [Fase 1: autorização e ativação](fase-1-autorizacao.md)
 - [Plano da release 0.2.0](plano-0.2.0.md)
 - [Fase 0: contratos, evidências e decisões pendentes](fase-0-contratos-0.2.0.md)
 

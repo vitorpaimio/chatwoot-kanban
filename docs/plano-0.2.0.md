@@ -135,19 +135,16 @@ arquiteturas publicadas e carga certificada. Licença/canal privado resolvidos.
 A5 foi substituído pela decisão de responsável inicial ser o criador. A6 permanece
 nativo; não criar rodízio. Outros ambientes dependem de adaptadores certificados.
 
-## Pendências não bloqueantes da Fase 0
+## Pendências atuais
 
 | Pendência | Fases dependentes |
 |---|---|
-| Manter MIT ou adotar AGPL-3.0; verificar direitos sobre contribuições anteriores | 5 |
-| E-mail privado ou GitHub Security Advisories e canal efetivamente habilitado | 5 |
-| Dispensar atributo de conversa após verificar automações de contato | 2, 4 |
-| Hardware, metas de latência e duração dos ensaios de carga | 3, 5 |
-| Acesso móvel só documentado ou URL direta com tema padrão | 3, 5 |
-| Usuário de serviço por API de plataforma ou rails runner | 4 |
-| Revogação durante cache de 60 segundos e tarefa compartilhada entre escopos | 1 |
+| Seleção explícita de licença: MIT preservada até decisão | 5 |
+| Tornar GitHub público e habilitar Private Vulnerability Reporting | 5 |
+| Hardware, latências alvo e duração dos ensaios | 3, 5 |
 
-Evidências e encaminhamentos serão registrados em `fase-0-contratos-0.2.0.md`.
+Fase 1 implementada: [evidências e limites](fase-1-autorizacao.md).
+Catálogo completo, manifesto e recuperação periódica permanecem na Fase 2.
 
 ## Decisões complementares — Fase 1
 

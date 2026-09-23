@@ -39,13 +39,17 @@ contrato, testes de navegador e certificação de implantação.
 
 ## Limitações atuais
 
-- Associação à conta ainda não restringe o Kanban por caixa/time. Não disponibilize
-  esta versão a agentes que não possam ver todos os dados importados da conta.
-  G5 e sua validação são gate da release, não um controle já implementado.
+- Cartões, movimentos, histórico e métricas usam a caixa da conversa vinculada.
+  Agentes consultam `/inboxes` com a própria sessão; cache de 60 segundos, com
+  falha fechada. Revogação pode levar até 60s. Cards sem conversa são visíveis ao
+  administrador e criador. Contatos/tarefas seguem a política CE de contatos da conta.
+  Esta política não equivale às permissões Enterprise ou a todos os acessos por time.
+- Conta desativada bloqueia dados, eventos recebidos e unidades do worker. A operação
+  aguarda unidades já em execução; depois da confirmação, nenhuma nova inicia.
 - O token administrativo usado pelo worker tem alcance superior ao de um agente.
   Nunca o use para descobrir as permissões da sessão humana.
-- A reconciliação periódica de eventos perdidos e a autoridade exclusivamente local
-  ainda serão implementadas. Hoje atributos externos podem alterar etapa/tarefa.
+- Etapa/tarefa têm autoridade local; divergência observada reenfileira o espelho.
+  A reconciliação periódica de eventos perdidos ainda pertence à Fase 2.
 - `/health` atual só indica processo ativo. Verificação de banco/fila, heartbeat
   do worker e healthchecks dos manifests pertencem às Fases 2 e 4.
 - Não há autenticação por Cloudflare Access/JWT implementada ou necessária ao

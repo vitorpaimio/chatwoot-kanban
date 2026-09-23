@@ -77,8 +77,8 @@ específicos; o relatório da Fase 0 documenta sua execução e limites.
 | migrations/ | Única origem das mudanças de schema via Alembic |
 
 As decisões da 0.2.0 estão no [plano](docs/plano-0.2.0.md). Ele descreve mudanças
-futuras, incluindo autoridade local estrita, G5 e atributos novos. Não assumir que
-essas políticas já estão implementadas. Não alterar código ou imagem do Chatwoot.
+por fases. Consulte [Fase 1](docs/fase-1-autorizacao.md) para a autorização e o
+corte de atributos já implementados; manifesto e recuperação periódica seguem pendentes. Não alterar código ou imagem do Chatwoot.
 
 Toda mutação de contato exige isolamento por conta, bloqueio, histórico e fila na
 mesma transação. Mudanças de integração exigem validação real nas versões alvo,
@@ -98,3 +98,5 @@ registrado. Inclua no PR problema, comportamento final, testes e limitações.
 Relatos de vulnerabilidade seguem [SECURITY](SECURITY.md), nunca uma issue pública
 com detalhes exploráveis. Licença da 0.2.0 e canal privado definitivo permanecem
 pendentes de decisão; preservar a licença MIT atual até aprovação.
+
+Prova de revogação do frontend com API controlada: `node tests/browser/authorization.cjs`.

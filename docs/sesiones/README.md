@@ -34,3 +34,5 @@ Formato: `<número>-<data>-<assunto>.md`.
 
 - [Sessão 021 — Métricas temporais](021-2026-09-23-metricas-temporais.md)
 - [Sessão 022 — Fase 0 da release 0.2.0](022-2026-09-23-fase-0-release.md)
+
+- [Sessão 023 — Fase 1: autorização e ativação](023-2026-09-23-fase-1-autorizacao.md)

@@ -41,3 +41,5 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 
 - [ADR-028 — Métricas temporais e motivos de perda](028-metricas-temporais.md)
 - [ADR-029 — Contratos e plano da release 0.2.0](029-plano-release-0.2.0.md)
+
+- [ADR-030 — Autorização por caixa e ativação](030-autorizacao-caixas-ativacao.md)
