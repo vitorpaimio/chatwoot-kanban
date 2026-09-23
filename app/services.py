@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 from app.database import lock_primary_contact, notify, record
@@ -53,21 +53,22 @@ async def projection(conn, account, contact):
         contact,
     )
     return {
-        "pipeline_01_etapas": primary["stage"] if primary else None,
         "kanban_etapa": f"{recent['funnel']} / {recent['stage']}" if recent else None,
-        "kanban_view_mensaje": task["message"] if task else None,
-        "kanban_view_fecha_termino": str(task["due_date"]) if task else None,
+        "kanban_tarefa": task["message"] if task else None,
+        "kanban_tarefa_vencimento": str(task["due_date"]) if task else None,
     }
 
 
-async def refresh_contact(conn, cw, contact_id, importing=False, project_cards=True):
+async def refresh_contact(conn, cw, contact_id, project_cards=True):
     account = cw.account
     data = await cw.request("GET", f"/contacts/{contact_id}")
     contact = data.get("payload", data)
     conversations = await cw.request("GET", f"/contacts/{contact_id}/conversations")
     conversations = conversations.get("payload", [])
     recent = max(
-        conversations, key=lambda c: c.get("last_activity_at", 0) or 0, default={}
+        conversations,
+        key=lambda c: (c.get("last_activity_at", 0) or 0, c["id"]),
+        default={},
     )
     assignee = recent.get("meta", {}).get("assignee") or {}
     contact_labels = await cw.request("GET", f"/contacts/{contact_id}/labels")
@@ -80,11 +81,6 @@ async def refresh_contact(conn, cw, contact_id, importing=False, project_cards=T
         datetime.fromtimestamp(activity, UTC)
         if isinstance(activity, (int, float))
         else None
-    )
-    old = await conn.fetchrow(
-        "SELECT * FROM kb_contacts WHERE account_id=$1 AND contact_id=$2",
-        account,
-        contact_id,
     )
     await conn.execute(
         (
@@ -118,178 +114,55 @@ async def refresh_contact(conn, cw, contact_id, importing=False, project_cards=T
         contact_id,
         recent.get("inbox_id"),
     )
-    if not project_cards:
-        return
-    funnel = await conn.fetchrow(
-        "SELECT * FROM kb_funnels WHERE account_id=$1 AND is_primary", account
-    )
-    if not funnel:
-        return
-    stages = await conn.fetch(
-        (
-            """
-        SELECT * FROM kb_stages WHERE account_id=$1 AND funnel_id=$2 AND NOT
-        archived ORDER BY position,id
-        """
-        ),
-        account,
-        funnel["id"],
-    )
-    if not stages:
-        return
-    selected = next(
-        (s for s in stages if s["name"] == attributes.get("pipeline_01_etapas")),
-        stages[0],
-    )
-    inserted = await conn.fetchval(
-        (
-            """
-        INSERT INTO kb_cards(account_id,contact_id,funnel_id,stage_id)
-        VALUES($1,$2,$3,$4) ON CONFLICT(account_id,funnel_id,contact_id) DO
-        NOTHING RETURNING id
-        """
-        ),
-        account,
-        contact_id,
-        funnel["id"],
-        selected["id"],
-    )
-    pending = await conn.fetchrow(
-        "SELECT * FROM kb_sync WHERE account_id=$1 AND contact_id=$2",
+    # Pin é por cartão. Uma conversa removida perde o vínculo, nunca mantém ACL antiga.
+    by_id = {c["id"]: c for c in conversations}
+    cards = await conn.fetch(
+        "SELECT * FROM kb_cards WHERE account_id=$1 AND contact_id=$2",
         account,
         contact_id,
     )
-    previous = old["remote_attributes"] if old else {}
-    changed = any(
-        attributes.get(key) != previous.get(key)
-        for key in (
-            "pipeline_01_etapas",
-            "kanban_view_mensaje",
-            "kanban_view_fecha_termino",
+    for card in cards:
+        linked = (
+            by_id.get(card["conversation_id"], {})
+            if card["conversation_pinned"]
+            else recent
         )
-    )
-    echo = (
-        pending
-        and pending["projection"]
-        and all(attributes.get(k) == v for k, v in pending["projection"].items())
-    )
-    if changed and pending and pending["status"] != "synced":
-        await record(
-            conn,
+        await conn.execute(
+            """UPDATE kb_cards SET conversation_id=$3,conversation_inbox_id=$4,
+            version=version+CASE WHEN (conversation_id,conversation_inbox_id)
+            IS DISTINCT FROM ($3::integer,$4::integer) THEN 1 ELSE 0 END
+            WHERE account_id=$1 AND id=$2""",
             account,
-            contact_id,
-            SYSTEM,
-            "conflito_externo",
-            previous,
-            attributes,
-            sync=False,
+            card["id"],
+            linked.get("id"),
+            linked.get("inbox_id"),
         )
-    elif changed and not echo:
-        if not inserted:
-            moved = await conn.fetchrow(
-                (
-                    """
-        UPDATE kb_cards SET stage_id=$4,version=version+1,
-        stage_entered_at=now() WHERE account_id=$1 AND contact_id=$2 AND
-        funnel_id=$3 AND stage_id<>$4 RETURNING id
-        """
-                ),
-                account,
-                contact_id,
-                funnel["id"],
-                selected["id"],
-            )
-            if moved:
-                await record(
-                    conn,
-                    account,
-                    contact_id,
-                    SYSTEM,
-                    "movimento_externo",
-                    previous,
-                    attributes,
-                    funnel["id"],
-                    selected["id"],
-                    sync=False,
-                )
-        message, due = (
-            attributes.get("kanban_view_mensaje"),
-            attributes.get("kanban_view_fecha_termino"),
-        )
-        try:
-            due = date.fromisoformat(str(due)[:10]) if due else None
-        except ValueError:
-            due = None
-        if message and due:
-            await conn.execute(
-                (
-                    """
-        INSERT INTO kb_tasks(account_id,contact_id,message,due_date,due_state)
-        VALUES($1,$2,$3,$4,$5) ON CONFLICT(account_id,contact_id) WHERE
-        status= 'active' DO UPDATE SET
-        message=excluded.message,due_date=excluded.due_date,
-        due_state=excluded.due_state,version=kb_tasks.version+1
-        """
-                ),
-                account,
-                contact_id,
-                str(message),
-                due,
-                task_state(due),
-            )
-        elif old and (
-            previous.get("kanban_view_mensaje")
-            or previous.get("kanban_view_fecha_termino")
-        ):
-            await conn.execute(
-                (
-                    """
-        UPDATE kb_tasks SET status= 'closed'
-        ,closed_at=now(),version=version+1 WHERE account_id=$1 AND
-        contact_id=$2 AND status= 'active'
-        """
-                ),
-                account,
-                contact_id,
-            )
-        await record(
-            conn,
-            account,
-            contact_id,
-            SYSTEM,
-            "atributos_importados" if importing else "alteracao_externa",
-            previous,
-            attributes,
-            sync=False,
-        )
-    if inserted:
-        await record(
-            conn,
-            account,
-            contact_id,
-            SYSTEM,
-            "contato_importado",
-            after={"card_id": inserted},
-            funnel=funnel["id"],
-            stage=selected["id"],
-        )
+    if project_cards and cards:
+        expected = await projection(conn, account, contact_id)
+        if any(attributes.get(k) != v for k, v in expected.items()):
+            await record(conn, account, contact_id, SYSTEM, "espelho_divergente")
     await notify(conn, account)
 
 
 async def setup_account(conn, cw):
     definitions = await cw.request("GET", "/custom_attribute_definitions")
-    keys = {a["attribute_key"]: a for a in definitions}
-    stage_names = keys.get("pipeline_01_etapas", {}).get("attribute_values") or [
-        s[0] for s in DEFAULT_STAGES
-    ]
+    keys = {(a["attribute_key"], a["attribute_model"]): a for a in definitions}
+    stage_names = [s[0] for s in DEFAULT_STAGES]
     desired = [
-        ("pipeline_01_etapas", "Etapa do Funil principal", 6, stage_names),
-        ("kanban_etapa", "Último funil e etapa", 0, []),
-        ("kanban_view_mensaje", "Tarefa do Kanban", 0, []),
-        ("kanban_view_fecha_termino", "Vencimento da tarefa", 5, []),
+        ("kanban_etapa", "Funil / Etapa", 0, []),
+        ("kanban_tarefa", "Tarefa do Kanban", 0, []),
+        ("kanban_tarefa_vencimento", "Vencimento da tarefa", 5, []),
     ]
     for key, label, kind, values in desired:
-        if key not in keys:
+        existing = keys.get((key, "contact_attribute")) or keys.get((key, 1))
+        if existing and existing["attribute_display_type"] not in (
+            kind,
+            {0: "text", 5: "date"}[kind],
+        ):
+            raise ValueError(f"Tipo incompatível para {key}")
+        if not existing and any(a["attribute_key"] == key for a in definitions):
+            raise ValueError(f"Modelo incompatível para {key}")
+        if not existing:
             await cw.request(
                 "POST",
                 "/custom_attribute_definitions",
@@ -371,28 +244,31 @@ async def setup_account(conn, cw):
         encrypt(hook["secret"]),
     )
     await remove_conversation_app(conn, cw)
-    page, count = 1, 0
-    while True:
-        response = await cw.request("GET", "/contacts", params={"page": page})
-        contacts = response.get("payload", [])
-        if not contacts:
-            break
-        for contact in contacts:
-            async with conn.transaction():
-                await lock_primary_contact(conn, cw.account, contact["id"])
-                await refresh_contact(conn, cw, contact["id"], importing=True)
-            count += 1
-            await conn.execute(
-                "UPDATE kb_accounts SET imported_count=$2 WHERE account_id=$1",
-                cw.account,
-                count,
-            )
-        page += 1
+    if await conn.fetchval(
+        "SELECT import_requested FROM kb_accounts WHERE account_id=$1", cw.account
+    ):
+        page, count = 1, 0
+        while True:
+            response = await cw.request("GET", "/contacts", params={"page": page})
+            contacts = response.get("payload", [])
+            if not contacts:
+                break
+            for contact in contacts:
+                async with conn.transaction():
+                    await lock_primary_contact(conn, cw.account, contact["id"])
+                    await refresh_contact(conn, cw, contact["id"])
+                count += 1
+                await conn.execute(
+                    "UPDATE kb_accounts SET imported_count=$2 WHERE account_id=$1",
+                    cw.account,
+                    count,
+                )
+            page += 1
     await conn.execute(
         (
             """
         UPDATE kb_accounts SET activation_status= 'ready'
-        ,activation_error=NULL WHERE account_id=$1
+        ,activation_error=NULL,import_requested=false WHERE account_id=$1
         """
         ),
         cw.account,
