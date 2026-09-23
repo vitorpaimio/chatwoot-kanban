@@ -178,8 +178,8 @@ async function eventually(fn) {
     );
     const c = (await r.json()).payload;
     return (
-      c.custom_attributes.kanban_view_mensaje == null &&
-      c.custom_attributes.kanban_view_fecha_termino == null
+      c.custom_attributes.kanban_tarefa == null &&
+      c.custom_attributes.kanban_tarefa_vencimento == null
     );
   });
   await cardA().getByRole("button", { name: "Criar tarefa" }).click();

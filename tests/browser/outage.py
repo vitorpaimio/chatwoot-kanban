@@ -53,8 +53,8 @@ async def main():
             f"/contacts/{contact}/task",
             "PUT",
             {
-                "mensaje": "Teste de indisponibilidade — pendente",
-                "fecha_vencimiento": "2026-09-24",
+                "descricao": "Teste de indisponibilidade — pendente",
+                "vencimento": "2026-09-24",
                 "version": card["task_version"],
             },
         )
@@ -98,8 +98,8 @@ async def main():
             f"/contacts/{contact}/task",
             "PUT",
             {
-                "mensaje": "Sincronização recuperada após reinício",
-                "fecha_vencimiento": "2026-09-24",
+                "descricao": "Sincronização recuperada após reinício",
+                "vencimento": "2026-09-24",
                 "version": card["task_version"],
             },
         )
@@ -124,10 +124,12 @@ async def main():
             if row["status"] == "synced":
                 assert row["version"] == row["synced_version"]
                 assert (
-                    row["projection"]["kanban_view_mensaje"]
+                    row["projection"]["kanban_tarefa"]
                     == "Sincronização recuperada após reinício"
                 )
-                assert row["projection"]["pipeline_01_etapas"] == stages[1]["name"]
+                assert row["projection"]["kanban_etapa"].endswith(
+                    " / " + stages[1]["name"]
+                )
                 print(
                     "OK: fila recuperada, estado final sincronizado "
                     "e movimentos antigos não restaurados.",

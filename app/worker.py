@@ -50,7 +50,7 @@ async def tick():
                     (
                         """
         UPDATE kb_accounts SET activation_status= 'failed'
-        ,activation_error=$2 WHERE account_id=$1
+        ,activation_error=$2 WHERE account_id=$1 AND enabled
         """
                     ),
                     account,

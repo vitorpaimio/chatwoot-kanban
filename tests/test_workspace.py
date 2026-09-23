@@ -60,7 +60,7 @@ async def test_moves_version_and_cross_account(client):
 
 
 async def test_task_close_recreate_and_projection(client):
-    body = {"mensaje": "Primeira", "fecha_vencimiento": "2026-09-23"}
+    body = {"descricao": "Primeira", "vencimento": "2026-09-23"}
     assert (await client.put("/kanban/contacts/10/task", json=body)).status_code == 200
     assert (await client.put("/kanban/contacts/10/task", json=body)).status_code == 409
     assert (
@@ -68,9 +68,9 @@ async def test_task_close_recreate_and_projection(client):
     ).status_code == 200
     async with connection() as conn:
         attrs = await projection(conn, 1, 10)
-        assert attrs["kanban_view_mensaje"] is None
-        assert attrs["kanban_view_fecha_termino"] is None
-    body["mensaje"] = "Segunda"
+        assert attrs["kanban_tarefa"] is None
+        assert attrs["kanban_tarefa_vencimento"] is None
+    body["descricao"] = "Segunda"
     assert (await client.put("/kanban/contacts/10/task", json=body)).status_code == 200
     async with connection() as conn:
         rows = await conn.fetch("SELECT * FROM kb_tasks ORDER BY id")
@@ -100,7 +100,7 @@ async def test_multiple_funnels_and_legacy_ambiguity(client):
     ).status_code == 200
     async with connection() as conn:
         attrs = await projection(conn, 1, 10)
-        assert attrs["pipeline_01_etapas"] == "Novo"
+        assert "pipeline_01_etapas" not in attrs
         assert attrs["kanban_etapa"] == "Renovação / Novo"
 
 
@@ -142,7 +142,7 @@ async def test_agent_permissions(client):
     assert (
         await client.put(
             "/kanban/contacts/10/task",
-            json={"mensaje": "Permitida", "fecha_vencimiento": "2026-09-23"},
+            json={"descricao": "Permitida", "vencimento": "2026-09-23"},
         )
     ).status_code == 200
 
@@ -190,7 +190,10 @@ async def test_concurrency_and_atomicity(client):
     stage = data["stages"][1]["id"]
 
     async def change():
-        async with connection() as conn, conn.transaction():
+        async with (
+            connection({"account": 1, "id": 3, "role": "administrator"}) as conn,
+            conn.transaction(),
+        ):
             try:
                 await move_card(
                     conn,
@@ -282,7 +285,7 @@ async def test_worker_retries_latest_projection(client, monkeypatch):
         },
     )
     await tick()
-    assert sent[-1]["pipeline_01_etapas"] == "Perdido"
+    assert sent[-1]["kanban_etapa"] == "Principal / Perdido"
     async with connection() as conn:
         row = await conn.fetchrow("SELECT * FROM kb_sync WHERE account_id=1")
         assert row["synced_version"] == row["version"] == 2
@@ -292,7 +295,7 @@ async def test_worker_retries_latest_projection(client, monkeypatch):
 async def test_external_clear_and_pending_protection(client):
     class CW:
         account = 1
-        attributes = {"pipeline_01_etapas": "Ganho"}
+        attributes = {"kanban_etapa": "Principal / Ganho"}
 
         async def request(self, _method, path):
             if path.endswith("conversations"):
@@ -310,7 +313,7 @@ async def test_external_clear_and_pending_protection(client):
     cw = CW()
     await client.put(
         "/kanban/contacts/10/task",
-        json={"mensaje": "Local", "fecha_vencimiento": "2026-09-23"},
+        json={"descricao": "Local", "vencimento": "2026-09-23"},
     )
     async with connection() as conn, conn.transaction():
         await lock_contact(conn, 1, 10)
@@ -324,20 +327,20 @@ async def test_external_clear_and_pending_protection(client):
         )
         assert (
             await conn.fetchval(
-                "SELECT count(*) FROM kb_history WHERE action='conflito_externo'"
+                "SELECT count(*) FROM kb_history WHERE action='espelho_divergente'"
             )
             == 1
         )
         await conn.execute("UPDATE kb_sync SET status='synced'")
         await conn.execute(
             "UPDATE kb_contacts SET remote_attributes=$1 WHERE account_id=1",
-            {"kanban_view_mensaje": "Local", "kanban_view_fecha_termino": "2026-09-23"},
+            {"kanban_tarefa": "Local", "kanban_tarefa_vencimento": "2026-09-23"},
         )
         cw.attributes = {}
         await refresh_contact(conn, cw, 10)
         assert (
             await conn.fetchval("SELECT count(*) FROM kb_tasks WHERE status='active'")
-            == 0
+            == 1
         )
 
 
@@ -407,7 +410,13 @@ async def test_sse_account_signal_and_expiration(db, monkeypatch):
         {"type": "http", "method": "GET", "headers": [], "query_string": b"account=1"},
         receive=receive,
     )
-    response = await workspace.events(request, {"account": 1})
+    user = {"account": 1, "id": 3, "role": "administrator"}
+
+    async def valid(_request):
+        return user
+
+    monkeypatch.setattr(workspace, "identity", valid)
+    response = await workspace.events(request, user)
     stream = response.body_iterator
     assert "ready" in await anext(stream)
     waiting = asyncio.create_task(anext(stream))
@@ -416,6 +425,11 @@ async def test_sse_account_signal_and_expiration(db, monkeypatch):
     await asyncio.sleep(0.03)
     assert not waiting.done()
     async with connection() as conn:
+        await conn.execute("SELECT pg_notify('kanban_events','1')")
+    await asyncio.sleep(0.03)
+    assert not waiting.done()
+    async with connection() as conn:
+        await conn.execute("UPDATE kb_cards SET version=version+1 WHERE account_id=1")
         await conn.execute("SELECT pg_notify('kanban_events','1')")
     assert "change" in await asyncio.wait_for(waiting, 1)
     monkeypatch.setattr(settings, "session_recheck_seconds", -1)
@@ -429,6 +443,7 @@ async def test_sse_account_signal_and_expiration(db, monkeypatch):
         await conn.execute("SELECT pg_notify('kanban_events','1')")
     assert "expired" in await asyncio.wait_for(waiting, 1)
     await stream.aclose()
+    await workspace.hub.close()
 
 
 async def test_cookie_origin_and_suspended_account(db, monkeypatch):

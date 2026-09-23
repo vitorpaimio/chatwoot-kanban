@@ -1235,7 +1235,7 @@ async def events(request: Request, user=AUTH):
                 if updated != revision:
                     revision = updated
                     yield "event: change\ndata: {}\n\n"
-                else:
+                elif not changed:
                     yield ": keepalive\n\n"
 
     return StreamingResponse(

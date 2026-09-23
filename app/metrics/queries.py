@@ -31,7 +31,8 @@ WITH snapshot AS (
  ORDER BY card_id,created_at,id
 ), task_scope AS (
  SELECT t.* FROM kb_tasks t WHERE t.account_id=$1 AND t.created_at<$3
- AND EXISTS(SELECT 1 FROM cards c WHERE c.contact_id=t.contact_id)
+ AND (($4::bigint IS NULL AND $5::integer IS NULL AND $6::integer IS NULL)
+ OR EXISTS(SELECT 1 FROM cards c WHERE c.contact_id=t.contact_id))
 )
 """
 SUMMARY = (
