@@ -148,6 +148,8 @@ async def service_data(conn, args):
                                     "value": row.get("metric_value"),
                                     "occurred": row.get("occurred_at"),
                                     "contact_id": c.get("contact_id"),
+                                    "conversation_id": c.get("display_id")
+                                    or c.get("id"),
                                     "inbox_id": c.get("inbox_id"),
                                     "assignee_id": c.get("assignee_id"),
                                 }
@@ -162,6 +164,25 @@ async def service_data(conn, args):
     key = f"reports:{start.isoformat()}:{end.isoformat()}:{assignee}:{inbox}"
     report = await cached(conn, account, key, reports)
     options = await native_options(conn, account)
+    if (
+        await conn.fetchval("SELECT current_setting('kanban.role',true)")
+        != "administrator"
+    ):
+        allowed = {
+            r["conversation_id"]
+            for r in await conn.fetch(
+                "SELECT conversation_id FROM kb_visible_cards WHERE account_id=$1",
+                account,
+            )
+            if r["conversation_id"]
+        }
+        conv = [c for c in conv if c["id"] in allowed]
+        report = {
+            **report,
+            "events": [
+                e for e in report["events"] if e.get("conversation_id") in allowed
+            ],
+        }
     sql = """
     WITH conv AS (
       SELECT * FROM jsonb_to_recordset($7::jsonb) AS r(id integer,contact_id
@@ -169,7 +190,7 @@ async def service_data(conn, args):
  waiting double precision,first_reply double precision)
       WHERE ($5::integer IS NULL OR assignee_id=$5) AND ($6::integer IS NULL OR
  inbox_id=$6)
-      AND ($4::bigint IS NULL OR EXISTS(SELECT 1 FROM kb_cards c WHERE
+      AND ($4::bigint IS NULL OR EXISTS(SELECT 1 FROM kb_visible_cards c WHERE
  c.account_id=$1 AND c.funnel_id=$4 AND c.contact_id=r.contact_id))
     ), events AS (
       SELECT * FROM jsonb_to_recordset($8::jsonb) AS r(metric text,value numeric,
@@ -177,7 +198,7 @@ async def service_data(conn, args):
       WHERE to_timestamp(occurred)>=$2 AND to_timestamp(occurred)<$3
       AND ($5::integer IS NULL OR assignee_id=$5) AND ($6::integer IS NULL OR
  inbox_id=$6)
-      AND ($4::bigint IS NULL OR EXISTS(SELECT 1 FROM kb_cards c WHERE
+      AND ($4::bigint IS NULL OR EXISTS(SELECT 1 FROM kb_visible_cards c WHERE
  c.account_id=$1 AND c.funnel_id=$4 AND c.contact_id=r.contact_id))
     )
     SELECT jsonb_build_object(

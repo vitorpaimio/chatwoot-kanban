@@ -21,7 +21,7 @@ async def evolution(conn, account, funnel_id, days):
         old.name AS previous_stage,
         CASE WHEN h.action IN ('contato_importado','cartao_criado')
           THEN 'entry' ELSE 'move' END AS event_kind
-        FROM kb_history h
+        FROM kb_visible_history h
         JOIN kb_funnels f ON (f.account_id,f.id)=(h.account_id,h.funnel_id)
         LEFT JOIN kb_contacts ct ON
           (ct.account_id,ct.contact_id)=(h.account_id,h.contact_id)

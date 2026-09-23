@@ -88,7 +88,7 @@ class Configuration(BaseModel):
 
 @router.get("/options")
 async def options(user=AUTH):
-    async with connection() as conn:
+    async with connection(user) as conn:
         funnels = await conn.fetch(
             (
                 "SELECT id,name,stale_days FROM kb_funnels WHERE account_id=$"
@@ -114,6 +114,13 @@ async def options(user=AUTH):
                 "inboxes": [],
                 "warning": "Não foi possível carregar os filtros do Chatwoot.",
             }
+        if user["role"] != "administrator":
+            native = {
+                **native,
+                "inboxes": [
+                    i for i in native["inboxes"] if i["id"] in user.get("inboxes", [])
+                ],
+            }
         return {
             **native,
             "funnels": [dict(r) for r in funnels],
@@ -124,7 +131,7 @@ async def options(user=AUTH):
 
 @router.get("/configuration")
 async def configuration(user=AUTH):
-    async with connection() as conn:
+    async with connection(user) as conn:
         return {
             "loss_reasons": await conn.fetchval(
                 "SELECT loss_reasons FROM kb_accounts WHERE account_id=$1",
@@ -144,7 +151,7 @@ async def configure(body: Configuration, user=AUTH):
     )
     if any(len(r) > 120 for r in reasons):
         raise HTTPException(422, "Cada motivo deve ter até 120 caracteres.")
-    async with connection() as conn:
+    async with connection(user) as conn:
         await conn.execute(
             "UPDATE kb_accounts SET loss_reasons=$2 WHERE account_id=$1",
             user["account"],
@@ -187,6 +194,12 @@ async def metrics(
     format: Literal["json", "csv"] = "json",
     user=AUTH,
 ):
+    if (
+        inbox_id is not None
+        and user["role"] != "administrator"
+        and inbox_id not in user.get("inboxes", [])
+    ):
+        raise HTTPException(404, "Registro não encontrado nesta conta")
     first, last = bounds(start, end)
     previous_start = first - (last - first)
     args = (user["account"], first, last, funnel_id, assignee_id, inbox_id)
@@ -198,7 +211,7 @@ async def metrics(
         assignee_id,
         inbox_id,
     )
-    async with connection() as conn:
+    async with connection(user) as conn:
         if funnel_id and not await conn.fetchval(
             "SELECT 1 FROM kb_funnels WHERE account_id=$1 AND id=$2",
             user["account"],

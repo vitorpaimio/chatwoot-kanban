@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import close_pool, init_pool
+from app.events import hub
 from app.routers.metrics import router as metrics_router
 from app.routers.workspace import router
 from app.security import cipher
@@ -21,6 +22,7 @@ async def lifespan(_app):
     try:
         yield
     finally:
+        await hub.close()
         await close_pool()
 
 

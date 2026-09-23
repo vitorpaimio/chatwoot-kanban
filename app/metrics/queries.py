@@ -10,7 +10,7 @@ WITH snapshot AS (
  s.value_cents,
  s.assignee_id,s.inbox_id,s.source,s.campaign,s.temperature,f.stale_days,ct.name,
  coalesce(a.name,ct.assignee_name,'Não atribuído') AS assignee_name
- FROM kb_cards c JOIN snapshot s ON s.card_id=c.id
+ FROM kb_visible_cards c JOIN snapshot s ON s.card_id=c.id
  JOIN kb_funnels f ON (f.account_id,f.id)=(c.account_id,c.funnel_id)
  JOIN kb_contacts ct ON (ct.account_id,ct.contact_id)=(c.account_id,c.contact_id)
  LEFT JOIN kb_agents a ON a.account_id=c.account_id AND a.user_id=s.assignee_id
