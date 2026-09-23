@@ -141,6 +141,14 @@
     }
     return r.json();
   }
+  function clearRestrictedData() {
+    generation++;
+    clearTimeout(debounce);
+    for (const chart of charts.values()) chart.destroy();
+    charts.clear();
+    loaded.clear();
+    for (const block of Object.keys(names)) $(block).replaceChildren();
+  }
   function clearCharts(block) {
     for (const [id, chart] of charts)
       if (id.startsWith(block + ":")) {
@@ -770,11 +778,16 @@
       connected = true;
     });
     source.addEventListener("change", () => {
-      clearTimeout(debounce);
+      clearRestrictedData();
       debounce = setTimeout(load, 500);
+    });
+    source.addEventListener("unavailable", () => {
+      clearRestrictedData();
+      $("metrics-status").textContent = "Chatwoot indisponível";
     });
     source.addEventListener("expired", () => {
       source.close();
+      clearRestrictedData();
       $("metrics-status").textContent = "Sessão expirada";
     });
   }

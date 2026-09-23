@@ -7,6 +7,7 @@ let user,
   data = { funnels: [], stages: [], cards: [], contacts: [] },
   selected,
   contactContext;
+let authorizationEpoch = 0;
 let editing = false,
   pendingRefresh = false,
   dragged,
@@ -331,6 +332,7 @@ async function api(path, method = "GET", body) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
+    if ([401, 403].includes(response.status)) clearRestrictedData();
     const result = await response.json().catch(() => ({}));
     throw new Error(
       typeof result.detail === "string"
@@ -405,8 +407,8 @@ $("dialog").addEventListener("cancel", () => {
   }
 });
 function navigate(card) {
-  const resource = card.conversation_id ? "conversations" : "contacts",
-    id = card.conversation_id || card.contact_id;
+  if (!card.conversation_id) return;
+  const resource = "conversations", id = card.conversation_id;
   if (compact)
     window.top.location.assign(`/app/accounts/${account}/${resource}/${id}`);
   else {
@@ -414,6 +416,25 @@ function navigate(card) {
     if (window.KanbanHelpers.validNavigation(message, account))
       parent.postMessage(message, location.origin);
   }
+}
+function conversationDialog(card) {
+  const [label, input] = field("ID da conversa (vazio: atividade mais recente)", "number",
+    card.conversation_pinned ? card.conversation_id : "");
+  input.min = "1";
+  dialog("Conversa vinculada", [label], () => api(`/cards/${card.id}/conversation`, "PUT", {
+    conversation_id: input.value ? Number(input.value) : null,
+    version: card.version,
+  }));
+}
+function clearRestrictedData() {
+  authorizationEpoch++;
+  pendingRefresh = false;
+  dragged = null;
+  moving = false;
+  data = { funnels: [], stages: [], cards: [], contacts: [] };
+  metadata.conversations.clear();
+  if ($("dialog").open) closeDialog();
+  render();
 }
 function taskDialog(card) {
   const [msg, m] = field("Tarefa", "textarea", card.message);
@@ -438,8 +459,8 @@ function taskDialog(card) {
     );
   dialog(`Tarefa · ${card.name}`, content, () =>
     api(`/contacts/${card.contact_id}/task`, "PUT", {
-      mensaje: m.value,
-      fecha_vencimiento: d.value,
+      descricao: m.value,
+      vencimento: d.value,
       version: card.task_version || null,
     }),
   );
@@ -472,7 +493,8 @@ function details(card) {
       `Responsável: ${card.assignee_name || "Não atribuído"} · Sincronização: ${syncLabel(card.sync_status)}`,
       "muted",
     ),
-    button("Abrir conversa ou contato", () => navigate(card)),
+    ...(card.conversation_id ? [button("Abrir conversa", () => navigate(card))] : []),
+    button("Vincular conversa", () => conversationDialog(card)),
     button("Ver histórico deste contato", () => history(card.contact_id)),
     button(card.task_id ? "Editar tarefa" : "Criar tarefa", () =>
       taskDialog(card),
@@ -822,7 +844,10 @@ async function load() {
     pendingRefresh = true;
     return;
   }
-  data = await api("/board");
+  const epoch = authorizationEpoch;
+  const next = await api("/board");
+  if (epoch !== authorizationEpoch) return;
+  data = next;
   if (!data.funnels.some((f) => f.id === selected))
     selected = data.funnels[0]?.id;
   renderFunnelPicker();
@@ -1358,6 +1383,12 @@ async function accountSettings() {
         ),
         el("p", "Fuso horário: Brasília (America/Sao_Paulo)."),
         label,
+        button(state.activation?.enabled ? "Desativar conta" : "Habilitar conta", async () => {
+          await api("/activation", "PUT", { enabled: !state.activation?.enabled });
+          closeDialog();
+          clearRestrictedData();
+          await init();
+        }),
       ],
       async () => {
         if (token.value) await api("/activate", "POST", { token: token.value });
@@ -1373,7 +1404,7 @@ $("activate-form").onsubmit = async (e) => {
   try {
     await api("/activate", "POST", { token: $("service-token").value });
     $("service-token").value = "";
-    notice("Conta ativada. Importando contatos…");
+    notice("Ativação agendada. A importação de contatos é uma ação separada.");
     await init();
   } catch (err) {
     showError(err);
@@ -1408,14 +1439,19 @@ function connect() {
     connectionStatus("Atualização em tempo real", "ready");
     load().catch(showError);
   });
-  source.addEventListener("change", () => load().catch(showError));
+  source.addEventListener("change", () => {
+    clearRestrictedData();
+    load().catch(showError);
+  });
   source.addEventListener("expired", () => {
     source.close();
+    clearRestrictedData();
     connectionStatus("Sessão expirada", "expired");
     notice("Entre novamente no Chatwoot para continuar.");
   });
   source.addEventListener("unavailable", () => {
     source.close();
+    clearRestrictedData();
     connectionStatus("Chatwoot indisponível · reconectando…", "connecting");
     reconnectTimer = setTimeout(connect, 5000);
   });
@@ -1446,6 +1482,12 @@ async function init() {
     $("notice").textContent.startsWith("Importação:")
   )
     notice("");
+  if (user.activation?.enabled === false) {
+    clearRestrictedData();
+    notice("Kanban desativado nesta conta.");
+    if (admin) accountSettings();
+    return;
+  }
   await load();
   const focusCard = Number(params.get("card"));
   if (focusCard) {
