@@ -19,3 +19,7 @@ Os gates de certificação da release 0.2.0 permanecem separados desta entrega.
 Validação local: Ruff, 164 testes Python (dois opt-in omitidos), quatro testes
 JavaScript, sintaxe do shell e ajuda do CLI aprovados. Relatos privados habilitados
 com confirmação adicional explícita do mantenedor.
+
+O primeiro ensaio remoto encontrou a ausência de `.local` no runner limpo antes
+do preparo Docker. O preparo passou a criar os diretórios pais; promoção do
+instalador permaneceu bloqueada enquanto o ensaio não terminou.

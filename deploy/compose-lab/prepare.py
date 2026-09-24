@@ -18,7 +18,7 @@ def main() -> None:
     """Gera Compose descartável sem credenciais fixas e prepara banco Chatwoot."""
     if os.environ.get("PHASE42_DISPOSABLE") != "colima-kanban-phase42":
         raise SystemExit("Exige PHASE42_DISPOSABLE=colima-kanban-phase42")
-    LOCAL.mkdir(mode=0o700, exist_ok=True)
+    LOCAL.mkdir(mode=0o700, parents=True, exist_ok=True)
     LOCAL.chmod(0o700)
     source = yaml.safe_load((ROOT / "deploy/lab/stack.yml").read_text())
     source.pop("version", None)
