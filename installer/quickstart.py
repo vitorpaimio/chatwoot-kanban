@@ -25,6 +25,7 @@ ActiveRecord::Base.transaction do
   puts 'KANBAN_DISCOVERY=' + JSON.generate({
     accounts: Account.order(:id).pluck(:id, :name),
     url: ENV['FRONTEND_URL'],
+    force_ssl: Rails.application.config.force_ssl ? true : false,
     database: db.slice(:host, :database, :username)
   })
 end
@@ -80,6 +81,23 @@ def service_name(container: dict, adapter: str) -> str | None:
         else "com.docker.compose.service"
     )
     return labels.get(key)
+
+
+def service_aliases(container: dict) -> dict[str, list[str]]:
+    """Aliases declarados no serviço Swarm, por ID de rede.
+
+    O daemon nem sempre os repete no inspect do container; sem eles, um banco
+    acessado por alias de rede (ex.: ``pgvector``) não seria encontrado.
+    """
+    name = service_name(container, "swarm")
+    if not name:
+        return {}
+    networks = inspect("service", name).get("Spec", {}).get("TaskTemplate", {})
+    return {
+        net["Target"]: net.get("Aliases") or []
+        for net in networks.get("Networks") or []
+        if net.get("Target")
+    }
 
 
 def discover(args: argparse.Namespace, image: str) -> Deployment:
@@ -166,6 +184,8 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
                 net.get("IPAddress"),
                 service_name(item, adapter),
             ]
+            if adapter == "swarm" and net.get("NetworkID"):
+                aliases.extend(service_aliases(item).get(net["NetworkID"], []))
             if db["host"] in aliases:
                 db_candidates.append(item)
                 break
@@ -184,6 +204,11 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
     url = inventory.get("url")
     if not url:
         raise InspectionError("FRONTEND_URL ausente no Chatwoot.")
+    chatwoot_url = f"http://{internal_host}:3000"
+    if adapter == "swarm" and inventory.get("force_ssl"):
+        # Com FORCE_SSL o Rails responde 301 a chamadas HTTP diretas, que não passam
+        # pelo proxy que envia X-Forwarded-Proto; usa a origem pública HTTPS.
+        chatwoot_url = url
     entrypoint = "websecure"
     if adapter == "swarm":
         spec = inspect("service", service_name(rails, adapter))["Spec"]
@@ -231,7 +256,7 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
         accounts=accounts,
         image=image,
         public_url=url,
-        chatwoot_url=f"http://{internal_host}:3000",
+        chatwoot_url=chatwoot_url,
         chatwoot_service=service_name(rails, adapter),
         chatwoot_database_service=service_name(postgres, adapter),
         chatwoot_database=db["database"],

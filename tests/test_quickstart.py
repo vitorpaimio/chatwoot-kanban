@@ -11,7 +11,7 @@ from installer.swarm import InspectionError
 IMAGE = "ghcr.io/vitorpaimio/chatwoot-kanban@sha256:" + "a" * 64
 
 
-def fixture(adapter="swarm", accounts=None):
+def fixture(adapter="swarm", accounts=None, force_ssl=False, db_service_net=None):
     def container(name, command, service, alias):
         labels = (
             {"com.docker.swarm.service.name": service}
@@ -44,6 +44,7 @@ def fixture(adapter="swarm", accounts=None):
     inventory = {
         "accounts": accounts or [[1, "Principal"]],
         "url": "https://chat.example.com",
+        "force_ssl": force_ssl,
         "database": {
             "host": "postgres",
             "database": "chatwoot",
@@ -69,6 +70,9 @@ def fixture(adapter="swarm", accounts=None):
         if args[:2] == ("container", "inspect"):
             return json.dumps([objects[args[2]]])
         if args[:2] == ("service", "inspect"):
+            if args[2] == "cw_postgres" and db_service_net:
+                task = {"TaskTemplate": {"Networks": [db_service_net]}}
+                return json.dumps([{"Spec": {**spec["Spec"], **task}}])
             return json.dumps([spec])
         if args[:2] == ("exec", "-i"):
             return "noise\nKANBAN_DISCOVERY=" + json.dumps(inventory) + "\n"
@@ -89,6 +93,57 @@ def test_swarm_detects_without_sidekiq_and_requires_no_input(monkeypatch):
     assert config.entrypoint == "websecure"
     assert all(call[0][0] in ("ps", "container", "service", "exec") for call in calls)
     assert "READ ONLY" in next(data for _, data in calls if data)
+
+
+def test_swarm_finds_database_by_alias_declared_only_in_the_service(monkeypatch):
+    # O inspect do container pode omitir o alias que o serviço declara na rede.
+    docker, objects, _ = fixture(
+        db_service_net={"Target": "net-1", "Aliases": ["postgres"]}
+    )
+    objects["db-id"]["NetworkSettings"]["Networks"]["shared"] = {
+        "Aliases": [],
+        "DNSNames": ["cw_postgres.1.abc", "db-id"],
+        "NetworkID": "net-1",
+    }
+    monkeypatch.setattr(q, "docker", docker)
+    config = q.discover(q.parser().parse_args(["--yes"]), IMAGE)
+    assert config.chatwoot_database_service == "cw_postgres"
+
+
+def test_service_alias_of_another_network_is_not_used(monkeypatch):
+    docker, objects, _ = fixture(
+        db_service_net={"Target": "outra-rede", "Aliases": ["postgres"]}
+    )
+    objects["db-id"]["NetworkSettings"]["Networks"]["shared"] = {
+        "Aliases": [],
+        "NetworkID": "net-1",
+    }
+    monkeypatch.setattr(q, "docker", docker)
+    with pytest.raises(InspectionError, match="PostgreSQL"):
+        q.discover(q.parser().parse_args(["--yes"]), IMAGE)
+
+
+def test_swarm_uses_public_origin_when_rails_forces_ssl(monkeypatch):
+    docker, _, _ = fixture(force_ssl=True)
+    monkeypatch.setattr(q, "docker", docker)
+    config = q.discover(q.parser().parse_args(["--yes"]), IMAGE)
+    assert config.chatwoot_url == "https://chat.example.com"
+    assert config.public_url == "https://chat.example.com"
+
+
+def test_swarm_keeps_internal_url_without_force_ssl(monkeypatch):
+    docker, _, _ = fixture()
+    monkeypatch.setattr(q, "docker", docker)
+    config = q.discover(q.parser().parse_args(["--yes"]), IMAGE)
+    assert config.chatwoot_url == "http://cw_rails:3000"
+
+
+def test_compose_keeps_internal_url_even_with_force_ssl(monkeypatch):
+    docker, _, _ = fixture("compose", force_ssl=True)
+    monkeypatch.setattr(q, "docker", docker)
+    args = ["--yes", "--public-url", "http://localhost:18080"]
+    config = q.discover(q.parser().parse_args(args), IMAGE)
+    assert config.chatwoot_url == "http://rails:3000"
 
 
 def test_multiple_accounts_need_explicit_selection(monkeypatch):

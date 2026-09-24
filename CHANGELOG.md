@@ -21,6 +21,14 @@ Preparação da 0.2.0; nenhuma nova tag ou release publicada nesta etapa.
 - CI cobre instalador e JavaScript próprio; registra digest da imagem e commit testado.
 - Licença MIT confirmada pelo mantenedor para a 0.2.0.
 
+### Corrigido
+
+- Instalador Swarm: encontra o PostgreSQL também quando o alias de rede está
+  declarado só no serviço (`docker service inspect`), não no container.
+- Instalador Swarm: com `FORCE_SSL` no Rails, usa a origem pública HTTPS como
+  `chatwoot_url`; a URL interna HTTP recebia `301`, o worker não ativava a conta e a
+  API era reiniciada em loop pela sonda de saúde.
+
 ### Alterado
 
 - Interface, mensagens próprias, instruções e documentação em português do Brasil.
