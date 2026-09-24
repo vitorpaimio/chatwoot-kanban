@@ -133,6 +133,7 @@ puts 'HUMAN=' + {email: u.email, password: password}.to_json
         assert client.get("/kanban/board?account=1", headers=headers).status_code == 200
         assert client.get("/kanban/board?account=1").status_code == 401
     command("node", "tests/browser/phase42.cjs", data=json.dumps(human), timeout=120)
+    command("node", "tests/browser/installer-loader.cjs", timeout=30)
     print("Sessão humana e quadro real aprovados.", flush=True)
     rails(
         "Account.find(1).contacts.create!(name: 'Contato webhook', "

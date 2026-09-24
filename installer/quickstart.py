@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from installer.compose import ComposeLifecycle
 from installer.config import Deployment
 from installer.lifecycle import Lifecycle
+from installer.routing import proxy_network
 from installer.state import State, write_private
 from installer.swarm import InspectionError
 
@@ -229,9 +230,7 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
                 points = labels.get(prefix + ".entrypoints", "").split(",")
                 routers.extend(p for p in points if p)
         entrypoint = choose("Entrypoint Traefik", sorted(set(routers)), str, args.yes)
-        network = labels.get(
-            "traefik.swarm.network", labels.get("traefik.docker.network", internal)
-        )
+        network = proxy_network(docker, service_name(rails, adapter))
         if network not in rails_nets:
             raise InspectionError("Rede Traefik não está conectada ao Rails.")
     else:

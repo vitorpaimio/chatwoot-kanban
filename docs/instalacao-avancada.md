@@ -186,3 +186,32 @@ falha específica, com acompanhamento do administrador:
 
 Se a falha foi somente na descoberta do alias PostgreSQL e nenhum JSON foi
 gravado, basta repetir a instalação com a versão corrigida após sua publicação.
+
+## Recuperar rede pública e webhook no Swarm
+
+`healthy: true` de versões anteriores não comprovava acesso pelo Traefik. Se
+`/kanban/loader.js` retorna 504 e o Sidekiq recusa webhook para um hostname
+interno, corrija a instalação após a publicação da versão corrigida:
+
+1. Confirme a rede efetiva do Traefik, incluindo `--providers.swarm.network`
+   ou `TRAEFIK_PROVIDERS_SWARM_NETWORK`. Rails e Traefik devem estar conectados
+   a ela. Não escolha a rede do banco apenas porque o Rails também a utiliza.
+2. Sem instalador concorrente, preserve uma cópia protegida de todo o diretório
+   `/opt/chatwoot-kanban`, com manifesto, chaves e backups.
+3. Corrija somente `network` em `installation.json` e `config.network` em
+   `state/manifest.json` para a mesma rede comprovada. Preserve `chatwoot_network`,
+   contas, identidade, recibos e demais campos. Alterar só um arquivo é recusado
+   pela comparação de configuração; atualizar a imagem não redescobre esses dados.
+4. Com o instalador corrigido, execute `update --yes --dry-run`, confira o plano
+   e execute `update --yes`. A atualização reprovisiona o webhook na origem pública
+   e remove o interno legado somente quando o recibo comprova sua propriedade.
+   Não remova webhooks por um ID copiado de outra instalação.
+5. Confirme o status e o carregamento de `/kanban/loader.js` e do quadro pelo domínio
+   público. Gere uma alteração controlada de contato na conta selecionada e
+   confirme o recebimento/processamento no Kanban. Ausência de erro nos logs, por
+   si só, não comprova entrega.
+
+O procedimento não exige `SAFE_FETCH_ALLOW_PRIVATE_NETWORK=true` no Chatwoot.
+Se WAF/Access bloquear a origem, ajuste o acesso à integração conforme a política
+da instalação; não desabilite a proteção SSRF global. Não compartilhe logs que
+contenham assinatura ou segredo do webhook.

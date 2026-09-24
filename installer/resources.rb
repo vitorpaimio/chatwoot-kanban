@@ -66,9 +66,24 @@ ActiveRecord::Base.transaction do
       entry['webhooks'].reject! { |h| h['account'] == id && h['url'] == url }
       entry['webhooks'] << { 'account' => id, 'id' => hook.id, 'url' => url,
                             'ownership' => previous&.fetch('ownership') || (created ? 'created' : 'preexisting') }
+      legacy_url = "http://#{request.fetch('name')}_api:8000/kanban/webhooks/#{id}/events"
+      if url != legacy_url
+        entry['webhooks'].delete_if do |old|
+          next false unless old['account'] == id && old['url'] == legacy_url && old['ownership'] == 'created'
+          legacy = account.webhooks.find_by(id: old['id'])
+          next false if legacy && legacy.url != old['url']
+          legacy&.destroy!
+          true
+        end
+      end
     end
-    loader = '<script data-chatwoot-kanban src="/kanban/loader.js" defer></script>'
+    legacy_loader = '<script data-chatwoot-kanban src="/kanban/loader.js" defer></script>'
+    loader = '<script data-chatwoot-kanban src="/kanban/loader.js" async></script>'
     scripts = InstallationConfig.find_or_initialize_by(name: 'DASHBOARD_SCRIPTS')
+    if state['loader_created'] && scripts.value.to_s.include?(legacy_loader)
+      scripts.value = scripts.value.to_s.gsub(legacy_loader, loader)
+      scripts.save!
+    end
     unless scripts.value.to_s.include?('data-chatwoot-kanban')
       scripts.value = scripts.value.to_s + "\n" + loader
       scripts.save!
@@ -110,6 +125,7 @@ ActiveRecord::Base.transaction do
         scripts = InstallationConfig.find_by(name: 'DASHBOARD_SCRIPTS')
         if scripts
           scripts.value = scripts.value.to_s.gsub('<script data-chatwoot-kanban src="/kanban/loader.js" defer></script>', '')
+          scripts.value = scripts.value.to_s.gsub('<script data-chatwoot-kanban src="/kanban/loader.js" async></script>', '')
           scripts.save!
         end
         state['loader_created'] = false
