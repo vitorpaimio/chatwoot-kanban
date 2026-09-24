@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
+from installer import terminal
 from installer.compose import ComposeLifecycle
 from installer.config import Deployment
 from installer.lifecycle import Lifecycle
@@ -61,16 +62,10 @@ def choose(title: str, values: list, label, automatic: bool):
         raise InspectionError(f"{title}: nenhum candidato compatível encontrado.")
     if len(values) == 1:
         return values[0]
-    if automatic or not sys.stdin.isatty():
+    if automatic or not terminal.interactive():
         raise InspectionError(f"{title}: há várias opções; execute interativamente.")
-    print(title)
-    for index, value in enumerate(values, 1):
-        # JSON escapa controles que poderiam modificar o terminal.
-        print(f"{index}. {json.dumps(label(value), ensure_ascii=False)}")
-    answer = input("Número: ").strip()
-    if not answer.isdecimal() or not 1 <= int(answer) <= len(values):
-        raise InspectionError("Seleção inválida; nada instalado.")
-    return values[int(answer) - 1]
+    index = terminal.select(title, [str(label(value)) for value in values])[0]
+    return values[index]
 
 
 def service_name(container: dict, adapter: str) -> str | None:
@@ -164,12 +159,24 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
         raise InspectionError("Rails não retornou inventário único.")
     inventory = json.loads(lines[0])
     available = inventory["accounts"]
+    if not available:
+        raise InspectionError("Crie uma conta no Chatwoot antes de instalar o Kanban.")
     if args.accounts:
         accounts = sorted(set(args.accounts))
         if not set(accounts) <= {row[0] for row in available}:
             raise InspectionError("Conta solicitada não existe nesta instalação.")
+    elif args.all_accounts:
+        accounts = sorted({row[0] for row in available})
+    elif terminal.interactive() and not args.yes:
+        indexes = terminal.select(
+            "Em quais contas você quer ativar o Kanban?",
+            [f"{name} (#{account})" for account, name in available],
+            multiple=True,
+        )
+        accounts = sorted(available[index][0] for index in indexes)
     else:
         accounts = [choose("Conta Chatwoot", available, lambda row: row, args.yes)[0]]
+    args.account_names = {account: name for account, name in available}
     db = inventory["database"]
     rails_nets = rails["NetworkSettings"]["Networks"]
     db_candidates = []
@@ -235,10 +242,13 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
             raise InspectionError("Rede Traefik não está conectada ao Rails.")
     else:
         # Preservar o contrato Compose: gateway HTTP, sem editar proxy preexistente.
-        if not args.public_url and sys.stdin.isatty() and not args.yes:
-            print("Compose usará um gateway HTTP próprio; seu proxy não será alterado.")
+        if not args.public_url and terminal.interactive() and not args.yes:
+            print(
+                "Informe o endereço que sua equipe usará "
+                "para abrir o Chatwoot com Kanban."
+            )
             args.public_url = input(
-                "URL de acesso (ex.: http://IP-DA-VPS:18080): "
+                "Endereço de acesso (ex.: http://IP-DA-VPS:18080): "
             ).strip()
         if not args.public_url:
             raise InspectionError(
@@ -282,7 +292,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument(
         "operation",
         nargs="?",
-        default="install",
+        default=None,
         choices=["install", "update", "status", "uninstall"],
     )
     result.add_argument("--yes", action="store_true", help="Confirmar sem perguntas")
@@ -290,13 +300,44 @@ def parser() -> argparse.ArgumentParser:
         "--dry-run", action="store_true", help="Somente conferir o plano"
     )
     result.add_argument("--container", help="Container Rails quando houver vários")
-    result.add_argument("--accounts", nargs="+", type=int, help="IDs das contas")
+    accounts = result.add_mutually_exclusive_group()
+    accounts.add_argument("--accounts", nargs="+", type=int, help="IDs das contas")
+    accounts.add_argument(
+        "--all-accounts", action="store_true", help="Ativar todas as contas existentes"
+    )
+    result.add_argument(
+        "--details",
+        action="store_true",
+        help="Mostrar diagnóstico técnico e plano JSON",
+    )
     result.add_argument(
         "--rails-wrapper", nargs="+", help="Wrapper de segredos do Rails"
     )
     result.add_argument("--public-url", help="Origem HTTP do gateway Compose")
     result.add_argument("--listen-host")
     return result
+
+
+def summary(config: Deployment, args: argparse.Namespace) -> None:
+    """Mostra apenas o destino e as contas que receberão a integração."""
+    names = getattr(args, "account_names", {})
+    print(f"\n  Chatwoot: {terminal.clean(config.public_url)}")
+    print(f"  Contas selecionadas: {len(config.accounts)}")
+    for account in config.accounts:
+        print(f"    • {terminal.clean(names.get(account, f'Conta #{account}'))}")
+    print()
+
+
+def show_status(result: dict, details: bool) -> None:
+    """Exibe saúde sem confundir sucesso de provisionamento com disponibilidade."""
+    if details:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif result.get("healthy"):
+        print("✓ Kanban funcionando em todas as contas selecionadas.")
+    else:
+        print(
+            "O Kanban ainda não está pronto. Execute status --details para diagnóstico."
+        )
 
 
 def run(args: argparse.Namespace, root: Path = ROOT) -> int:
@@ -311,8 +352,38 @@ def run(args: argparse.Namespace, root: Path = ROOT) -> int:
     lifecycle = None
     try:
         guard.lock()
+        print("\n  CHATWOOT KANBAN\n  Suas negociações dentro do Chatwoot.\n")
+        if args.operation is None:
+            if terminal.interactive() and not args.yes and not args.dry_run:
+                existing = config_path.exists()
+                operations = (
+                    ["install", "status", "update", "uninstall"]
+                    if existing
+                    else ["install"]
+                )
+                labels = (
+                    [
+                        "Iniciar / retomar o Kanban",
+                        "Verificar funcionamento",
+                        "Atualizar",
+                        "Remover integração",
+                    ]
+                    if existing
+                    else ["Instalar e ativar o Kanban"]
+                )
+                args.operation = operations[
+                    terminal.select("O que você quer fazer?", labels)[0]
+                ]
+            else:
+                args.operation = "install"
         if config_path.exists():
+            print("1/4  Carregando sua instalação…", flush=True)
             config = Deployment.model_validate_json(config_path.read_text())
+            if args.accounts or args.all_accounts:
+                raise InspectionError(
+                    "Esta instalação já tem contas salvas. A seleção de contas é feita "
+                    "na primeira instalação; nenhuma conta foi alterada."
+                )
             if args.operation == "update":
                 config = config.model_copy(update={"image": image})
         elif args.operation != "install":
@@ -320,48 +391,73 @@ def run(args: argparse.Namespace, root: Path = ROOT) -> int:
                 "Instalação não encontrada. Execute install primeiro."
             )
         else:
+            print("1/4  Encontrando seu Chatwoot…", flush=True)
             config = discover(args, image)
         cls = ComposeLifecycle if config.adapter == "compose" else Lifecycle
         lifecycle = cls(config, root / "state")
+        lifecycle.progress = lambda message: print(f"  {message}", flush=True)
         if args.operation == "status":
             lifecycle.preflight()
             result = lifecycle.status()
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            show_status(result, args.details)
             return 0 if result.get("healthy") else 2
+        print("2/4  Conferindo se está tudo pronto…", flush=True)
         plan = lifecycle.plan(args.operation, config.network)
-        print(f"Chatwoot: {config.chatwoot_service} | Adaptador: {config.adapter}")
-        print(f"Contas: {config.accounts} | Rede: {config.network}")
-        print(f"Acesso: {config.public_url} | Estado: {root}")
-        print(json.dumps(plan, ensure_ascii=False, indent=2))
+        summary(config, args)
+        if args.details:
+            print(json.dumps(plan, ensure_ascii=False, indent=2))
         if plan["blocked"]:
-            raise InspectionError("Plano bloqueado; confira os atributos e a rede.")
+            raise InspectionError(
+                "Encontramos uma configuração incompatível. Nada foi instalado. "
+                "Execute novamente com --dry-run --details para conferir."
+            )
         if args.dry_run:
+            print("Verificação concluída. Nenhuma instalação foi aplicada.")
             return 0
         if not args.yes:
-            if not sys.stdin.isatty():
+            if not terminal.interactive():
                 raise InspectionError(
                     "Use terminal interativo ou --yes para confirmar."
                 )
-            if input("Aplicar este plano? [s/N] ").strip().lower() not in ("s", "sim"):
+            action = {
+                "install": "Instalar e ativar nas contas selecionadas",
+                "update": "Atualizar o Kanban com backup",
+                "uninstall": "Remover integração e preservar os dados",
+            }[args.operation]
+            if (
+                terminal.select(
+                    f"Continuar com {len(config.accounts)} conta(s) selecionada(s)?",
+                    ["Cancelar", action],
+                    context=config.public_url,
+                )[0]
+                == 0
+            ):
                 print("Cancelado. Nenhum recurso Chatwoot alterado.")
                 return 0
         if args.operation in ("install", "update"):
-            print("Baixando a imagem do Kanban...", flush=True)
+            print("3/4  Preparando o Kanban…", flush=True)
             docker("pull", config.image)
         write_private(config_path, config.model_dump_json(indent=2).encode())
         lifecycle.state.lock()
         if args.operation == "uninstall":
             result = lifecycle.uninstall(config.network, False, False)
         else:
-            print("Criando backup e instalando; aguarde...", flush=True)
+            print("4/4  Instalando e ativando suas contas…", flush=True)
             result = lifecycle.install(args.operation, config.network)
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-        if result.get("healthy") is False:
+        if args.details:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        if args.operation != "uninstall" and result.get("healthy") is not True:
+            show_status(result, False)
             return 2
-        if args.operation != "uninstall":
-            print(f"Concluído. Abra {config.public_url} e acesse Pipeline → Kanban.")
+        if args.operation == "uninstall":
+            print("✓ Integração removida. Dados e backups preservados.")
+        else:
+            print(f"\n✓ Kanban pronto em {len(config.accounts)} conta(s)!")
+            print(
+                f"Abra {terminal.clean(config.public_url)} e acesse Pipeline → Kanban."
+            )
         return 0
-    except Exception:
+    except (Exception, KeyboardInterrupt):
         if (
             lifecycle
             and hasattr(lifecycle.state, "_lock")
@@ -381,6 +477,12 @@ def main() -> int:
     args = parser().parse_args()
     try:
         return run(args)
+    except (terminal.CancelledError, KeyboardInterrupt):
+        print(
+            "\nOperação cancelada. Se a instalação já começou, "
+            "execute status antes de retomar."
+        )
+        return 130
     except InspectionError as exc:
         print(str(exc), file=sys.stderr)
     except (OSError, ValueError, KeyError, TypeError, ValidationError):

@@ -6,6 +6,7 @@ import json
 import secrets
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,6 +29,7 @@ class Lifecycle:
         self.config = config
         self.state = State(directory)
         self.runtime = Runtime(config)
+        self.progress: Callable[[str], None] = lambda _message: None
 
     def request(self, operation: str, **extras: object) -> dict:
         """Constrói parâmetros do adaptador, sem dados de sessão humana."""
@@ -360,9 +362,11 @@ class Lifecycle:
                 identity=str(uuid.uuid4()), config=c.model_dump(), status="new"
             )
         self.state.save(status="backing_up")
+        self.progress("Protegendo seus dados com um backup…")
         self.stop_app()
         self.backup()
         self.state.save(status="installing" if operation == "install" else "updating")
+        self.progress("Preparando os serviços do Kanban…")
         self.resources()
         self.deploy(c.image)
         self.database_ready()
@@ -371,6 +375,7 @@ class Lifecycle:
         self.migrate_and_start_api()
         self.wait_public_route()
         api = r.wait_container(c.name + "_api")
+        self.progress("Conectando e ativando as contas selecionadas…")
         result = r.rails(
             self.request(
                 "install",
@@ -392,6 +397,7 @@ class Lifecycle:
             data=json.dumps(result).encode(),
         )
         self.start_worker()
+        self.progress("Verificando se todas as contas estão prontas para uso…")
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             report = self.status()

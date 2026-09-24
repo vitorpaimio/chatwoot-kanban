@@ -6,7 +6,10 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Preparação da 0.2.0; nenhuma nova tag ou release publicada nesta etapa.
+## [0.2.0-rc.1] — 2026-09-24
+
+Versão candidata com assistente de instalação e correções de rede e webhook.
+A certificação completa da versão estável 0.2.0 permanece em andamento.
 
 ### Integração e operação
 
@@ -37,6 +40,14 @@ Preparação da 0.2.0; nenhuma nova tag ou release publicada nesta etapa.
   API era reiniciada em loop pela sonda de saúde.
 - Instalador Swarm: recusa `FRONTEND_URL` HTTP com SSL forçado antes de instalar,
   evitando persistir uma configuração que repetiria o redirecionamento.
+
+### Experiência de instalação
+
+- Assistente no terminal com setas, seleção de várias contas e opção de marcar
+  todas; confirmação antes de instalar e ativar.
+- Resumo e progresso em português, com diagnóstico técnico separado em `--details`.
+- Menu para retomar, verificar, atualizar e remover uma instalação existente;
+  `--all-accounts` disponível para instalação sem interação.
 
 ### Alterado
 

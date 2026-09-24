@@ -113,10 +113,15 @@ execute:
 bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/master/install.sh)
 ```
 
-O comando baixa o instalador, detecta o Chatwoot, banco, redes e contas, mostra um
-resumo e pede uma confirmação. Depois faz backup, sobe banco/API/worker do Kanban,
-aplica migrações, configura a integração e verifica a saúde. Ao terminar, abra o
-endereço mostrado e acesse **Pipeline → Kanban** no Chatwoot.
+O comando abre um assistente no terminal. Use **↑ ↓** para navegar, **Espaço** para
+marcar as contas e **Enter** para continuar. A opção **Selecionar todas** (ou a
+tecla **A**) marca todas as contas existentes. Confira o resumo e confirme
+**Instalar e ativar nas contas selecionadas**.
+
+O assistente encontra o Chatwoot, faz backup, instala a integração e ativa as
+contas escolhidas. Acompanhe o progresso na tela; a conclusão só aparece quando
+todas estiverem prontas. Abra o endereço mostrado e acesse **Pipeline → Kanban**.
+**Esc** cancela uma seleção. A instalação não importa contatos automaticamente.
 
 **Não precisa clonar o repositório, instalar Python, editar JSON, procurar digest
 ou fazer login no GitHub.** Repositório e imagens são públicos. O instalador usa
@@ -126,7 +131,7 @@ Docker já existente e não instala o Chatwoot do zero.
 | --- | --- |
 | **Swarm de nó único + Traefik** | Detecta serviços, redes e o roteamento do Chatwoot; mantém o domínio existente |
 | **Compose local** | Pede uma URL HTTP com porta livre e cria um gateway Nginx próprio; não altera seu proxy anterior nem configura TLS |
-| **Mais de uma instalação ou conta** | Pede a seleção; não ativa todas as contas silenciosamente |
+| **Mais de uma instalação ou conta** | Seleção por setas; permite marcar várias contas ou todas, com confirmação |
 
 Requisitos: `curl`, Bash, Docker ativo e acesso root ao socket local. Chatwoot com
 Rails/PostgreSQL no mesmo host, PostgreSQL 16 e Traefik já configurado no caso
@@ -143,11 +148,19 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/
 No Compose, informe também `--public-url http://IP-DA-VPS:18080`. Para acesso só por
 túnel SSH, use `--public-url http://localhost:18080`; o gateway fica em loopback.
 O acesso HTTP externo deve ficar em uma rede confiável; HTTPS existente não é
-reconfigurado por este adaptador. Para várias contas, use `--accounts 1 2`.
+reconfigurado por este adaptador. Para várias contas, use `--accounts 1 2`; para
+todas as contas existentes, use `--all-accounts --yes`. Essa seleção acontece na
+primeira instalação. Retomadas e atualizações preservam as contas já configuradas;
+novas contas criadas depois não são incluídas automaticamente.
+
+O modo padrão mostra apenas o progresso e o resultado. Acrescente `--details`
+quando precisar do plano técnico ou de diagnóstico para suporte.
 
 ### Verificar, atualizar e remover
 
-Use o mesmo comando, mudando apenas a operação no final:
+Execute novamente sem argumentos para escolher **Verificar funcionamento**,
+**Atualizar** ou **Remover integração** pelo menu. Também é possível informar a
+operação no final:
 
 ```bash
 # Conferir saúde:
@@ -165,8 +178,8 @@ plano, sem alterar o Chatwoot. O instalador não importa contatos automaticament
 
 Instalações com nomes, wrappers ou proxy fora do padrão podem exigir opções
 adicionais: execute o comando com `--help` ou use a
-[configuração avançada](docs/instalacao-avancada.md). A release 0.2.0 segue em
-preparação; disponibilidade do instalador não equivale à certificação de todos os
+[configuração avançada](docs/instalacao-avancada.md). A versão candidata `v0.2.0-rc.1` reúne o assistente e as correções de instalação.
+A versão estável 0.2.0 segue em preparação; disponibilidade do instalador não equivale à certificação de todos os
 ambientes, versões e arquiteturas.
 
 ## Começar no ambiente local
