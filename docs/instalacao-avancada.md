@@ -75,7 +75,7 @@ corresponder ao seu ambiente:
 | `accounts` | IDs numéricos das contas que receberão Kanban; aparecem em `/app/accounts/ID` na URL do Chatwoot |
 | `image` | Referência completa por digest copiada da CI e baixada no passo 2 |
 | `public_url` | Origem usada pela equipe para abrir o Chatwoot, sem caminho, por exemplo `https://chat.example.com` |
-| `chatwoot_url` | Endereço interno do Rails acessível pela rede Docker, por exemplo `http://rails:3000` |
+| `chatwoot_url` | URL do Rails acessível pelos containers; sem SSL forçado, por exemplo `http://rails:3000`; no Swarm com `FORCE_SSL`, use a origem pública HTTPS |
 | `chatwoot_service` / `chatwoot_database_service` | No Swarm, nomes completos de `docker service ls`; no Compose, chaves dos serviços, como `rails` e `postgres` |
 | `chatwoot_database` / `chatwoot_database_user` | Nome do banco e usuário existentes no container PostgreSQL do Chatwoot |
 | `chatwoot_network` | Rede existente que permite acessar o Rails; confira com `docker network ls` |
@@ -159,3 +159,30 @@ A remoção revoga o usuário técnico próprio e remove os recursos gerenciados
 No Compose, também remove o gateway criado; retome o acesso anterior ao Chatwoot.
 Volumes, backups e atributos são preservados por padrão.
 
+## Recuperar falha de SSL no Swarm
+
+O bootstrap consulta `Rails.application.config.force_ssl`. Quando ativo, usa
+`FRONTEND_URL` HTTPS para acessar a API. A origem precisa ser acessível pelos
+containers, com certificado válido e sem bloqueio por WAF/Access. Uma origem HTTP
+é recusada antes de instalar. Esse comportamento não modifica o Compose.
+
+Se uma versão anterior já gravou uma instalação que terminou em `failed` por
+redirecionamento `301`, atualizar o instalador não refaz a descoberta. Para essa
+falha específica, com acompanhamento do administrador:
+
+1. Confirme o `301` nas chamadas ao Rails e o estado `failed`; não use este
+   procedimento para falhas de credenciais, banco ou migração.
+2. Sem outro instalador em execução, preserve uma cópia protegida de todo
+   `/opt/chatwoot-kanban`, incluindo backups, chave e manifesto. Não apague estado,
+   volumes ou recibos para tentar instalar novamente.
+3. Em `/opt/chatwoot-kanban/installation.json`, altere somente `chatwoot_url` para
+   a origem HTTPS do Chatwoot. Se existir `/opt/chatwoot-kanban/state/manifest.json`,
+   aplique o mesmo valor em `config.chatwoot_url`. Preserve todos os demais campos;
+   a configuração é comparada com o manifesto antes da retomada.
+4. Com o script oficial, execute `sudo bash install.sh install --yes --dry-run`,
+   confira o plano e então `sudo bash install.sh install --yes`.
+5. Execute `sudo bash install.sh status` e confirme `healthy: true`, a ativação da
+   conta e o acesso ao quadro no Chatwoot.
+
+Se a falha foi somente na descoberta do alias PostgreSQL e nenhum JSON foi
+gravado, basta repetir a instalação com a versão corrigida após sua publicação.
