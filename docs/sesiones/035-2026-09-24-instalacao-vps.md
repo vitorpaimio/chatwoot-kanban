@@ -23,3 +23,7 @@ com confirmação adicional explícita do mantenedor.
 O primeiro ensaio remoto encontrou a ausência de `.local` no runner limpo antes
 do preparo Docker. O preparo passou a criar os diretórios pais; promoção do
 instalador permaneceu bloqueada enquanto o ensaio não terminou.
+
+O segundo ensaio subiu Chatwoot CE real e aprovou a descoberta/dry-run. A checagem
+de ausência do JSON foi corrigida para executar com sudo, respeitando o estado
+root 0700 criado pelo shell. Nenhuma permissão de produção foi relaxada.

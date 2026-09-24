@@ -12,13 +12,18 @@ ROOT = Path(__file__).resolve().parents[2]
 STATE = Path("/opt/chatwoot-kanban")
 
 
-def command(*args: str, data: str | None = None, timeout: int = 900) -> str:
+def command(
+    *args: str, data: str | None = None, timeout: int = 900, public_error: bool = False
+) -> str:
     """Não imprime saída de infraestrutura que possa conter credenciais."""
     result = subprocess.run(
         args, input=data, text=True, capture_output=True, timeout=timeout
     )
     if result.returncode:
-        raise RuntimeError(f"Falha na etapa {args[0]} (código {result.returncode}).")
+        detail = result.stderr.strip() if public_error else "Saída privada omitida."
+        raise RuntimeError(
+            f"Falha na etapa {args[0]} (código {result.returncode}): {detail}"
+        )
     return result.stdout
 
 
@@ -105,11 +110,13 @@ puts 'HUMAN=' + {email: u.email, password: password}.to_json
     )
 
     def bootstrap(*args):
-        return command("sudo", "bash", "-c", script, "install.sh", *args)
+        return command(
+            "sudo", "bash", "-c", script, "install.sh", *args, public_error=True
+        )
 
     print("Verificando dry-run...", flush=True)
     bootstrap("--yes", "--dry-run", "--public-url", "http://localhost:18080")
-    assert not (STATE / "installation.json").exists()
+    command("sudo", "test", "!", "-f", str(STATE / "installation.json"))
     print("Instalando pelo shell...", flush=True)
     bootstrap("--yes", "--public-url", "http://localhost:18080")
     first = command("sudo", "cat", str(STATE / "state/manifest.json"))
