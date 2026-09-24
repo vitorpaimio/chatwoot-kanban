@@ -38,6 +38,20 @@ falha está descrita no [guia avançado](../instalacao-avancada.md#recuperar-fal
 
 Estado e trava duráveis permitem repetição/update/status/uninstall. Nenhum token é
 pedido ao operador. O shell não baixa Python nem altera pacotes do host.
+
+O assistente usa `curses` da biblioteca padrão: setas para navegar, espaço para
+marcar contas e uma opção para selecionar todas. Exige entrada e saída TTY para
+menus; automação mantém argumentos explícitos (`--accounts` ou `--all-accounts`,
+com `--yes`). Sem seleção explícita, múltiplas contas continuam bloqueando execução
+automática. A seleção de todas é uma fotografia das contas existentes na descoberta,
+não uma regra de ativação futura. Configurações persistidas mantêm suas contas.
+
+A apresentação padrão contém destino, contas, confirmação e progresso. `--details`
+expõe plano/resultado técnico para diagnóstico, inclusive no comando `status`.
+O lifecycle mantém backup, provisionamento e verificação de todas as contas;
+eventos de progresso não transportam recibos ou credenciais. A confirmação inicial
+seleciona Cancelar. Escape restaura o terminal e cancela a seleção; interrupção
+durante uma mutação registra falha para diagnóstico e retomada.
 A CI publica o candidato por SHA e só promove a tag do instalador após ensaio
 real de instalação repetida, sessão humana no navegador, webhook e remoção em
 runner descartável. O laboratório do Mac não é reinstalado.

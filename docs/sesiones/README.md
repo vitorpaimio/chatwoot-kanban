@@ -54,3 +54,4 @@ Formato: `<número>-<data>-<assunto>.md`.
 
 - [Sessão 035 — Instalação por comando na VPS](035-2026-09-24-instalacao-vps.md)
 - [Sessão 036 — PR de instalação do cliente](036-2026-09-24-pr-instalacao-cliente.md)
+- [Sessão 037 — Assistente de instalação](037-2026-09-24-assistente-instalacao.md)

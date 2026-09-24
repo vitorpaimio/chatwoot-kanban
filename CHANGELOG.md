@@ -31,6 +31,14 @@ Preparação da 0.2.0; nenhuma nova tag ou release publicada nesta etapa.
 - Instalador Swarm: recusa `FRONTEND_URL` HTTP com SSL forçado antes de instalar,
   evitando persistir uma configuração que repetiria o redirecionamento.
 
+### Experiência de instalação
+
+- Assistente no terminal com setas, seleção de várias contas e opção de marcar
+  todas; confirmação antes de instalar e ativar.
+- Resumo e progresso em português, com diagnóstico técnico separado em `--details`.
+- Menu para retomar, verificar, atualizar e remover uma instalação existente;
+  `--all-accounts` disponível para instalação sem interação.
+
 ### Alterado
 
 - Interface, mensagens próprias, instruções e documentação em português do Brasil.

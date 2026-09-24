@@ -21,8 +21,8 @@ umask 077
 mkdir -p "$state"
 chmod 700 "$state"
 image=ghcr.io/vitorpaimio/chatwoot-kanban:installer-master
-echo 'Baixando o instalador aprovado pela CI...'
-docker pull "$image"
+echo 'Preparando o assistente do Chatwoot Kanban…'
+docker pull --quiet "$image" >/dev/null
 # Usa o ID obtido do pull, sem resolver novamente uma tag mutável ao executar.
 image_id=$(docker image inspect --format '{{.Id}}' "$image")
 if [ -t 0 ] && [ -t 1 ]; then
@@ -33,7 +33,7 @@ fi
 # Separar opção de TTY dos argumentos do instalador.
 tty_option=$1
 shift
-exec docker run --rm "$tty_option" --network host \
+exec docker run --rm "$tty_option" --env TERM="${TERM:-xterm}" --network host \
   --mount type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock \
   --mount type=bind,src="$state",dst="$state" \
   "$image_id" "$@"

@@ -90,12 +90,14 @@ def main() -> None:
     raw = rails("""
 require 'securerandom'
 a = Account.create!(name: 'Ensaio Bootstrap')
+second = Account.create!(name: 'Segunda conta Bootstrap')
 password = 'Aa1!' + SecureRandom.hex(24)
 u = User.new(email: 'bootstrap@example.invalid', name: 'Ensaio',
              password: password, password_confirmation: password)
 u.skip_confirmation!
 u.save!
 AccountUser.create!(account: a, user: u, role: :administrator)
+AccountUser.create!(account: second, user: u, role: :administrator)
 Redis::Alfred.delete(Redis::Alfred::CHATWOOT_INSTALLATION_ONBOARDING)
 puts 'HUMAN=' + {email: u.email, password: password}.to_json
 """)
@@ -115,22 +117,25 @@ puts 'HUMAN=' + {email: u.email, password: password}.to_json
         )
 
     print("Verificando dry-run...", flush=True)
-    bootstrap("--yes", "--dry-run", "--public-url", "http://localhost:18080")
+    bootstrap(
+        "--yes", "--all-accounts", "--dry-run", "--public-url", "http://localhost:18080"
+    )
     command("sudo", "test", "!", "-f", str(STATE / "installation.json"))
     print("Instalando pelo shell...", flush=True)
-    bootstrap("--yes", "--public-url", "http://localhost:18080")
+    bootstrap("--yes", "--all-accounts", "--public-url", "http://localhost:18080")
     first = command("sudo", "cat", str(STATE / "state/manifest.json"))
     print("Repetindo instalação...", flush=True)
     bootstrap("--yes")
     second = command("sudo", "cat", str(STATE / "state/manifest.json"))
     assert json.loads(first)["receipt"] == json.loads(second)["receipt"]
-    assert '"healthy": true' in bootstrap("status")
+    assert '"healthy": true' in bootstrap("status", "--details")
     origin = "http://localhost:18080"
     with httpx.Client(base_url=origin, timeout=30) as client:
         login = client.post("/auth/sign_in", json=human)
         assert login.status_code == 200
         headers = {key: login.headers[key] for key in ("access-token", "client", "uid")}
         assert client.get("/kanban/board?account=1", headers=headers).status_code == 200
+        assert client.get("/kanban/board?account=2", headers=headers).status_code == 200
         assert client.get("/kanban/board?account=1").status_code == 401
     command("node", "tests/browser/phase42.cjs", data=json.dumps(human), timeout=120)
     print("Sessão humana e quadro real aprovados.", flush=True)
@@ -168,7 +173,7 @@ puts 'HUMAN=' + {email: u.email, password: password}.to_json
     else:
         raise RuntimeError("Webhook real não processado.")
     bootstrap("update", "--yes")
-    assert '"healthy": true' in bootstrap("status")
+    assert '"healthy": true' in bootstrap("status", "--details")
     bootstrap("uninstall", "--yes")
     assert (
         command(

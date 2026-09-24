@@ -213,8 +213,8 @@ def test_dry_run_and_declined_plan_never_install(monkeypatch, tmp_path):
     monkeypatch.setattr(q, "Lifecycle", Fake)
     assert q.run(q.parser().parse_args(["--yes", "--dry-run"]), tmp_path) == 0
     assert not (tmp_path / "installation.json").exists()
-    monkeypatch.setattr(q.sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr("builtins.input", lambda _: "n")
+    monkeypatch.setattr(q.terminal, "interactive", lambda: True)
+    monkeypatch.setattr(q.terminal, "select", lambda *_args, **_kwargs: [0])
     assert q.run(q.parser().parse_args([]), tmp_path) == 0
     assert not mutations
     assert not (tmp_path / "installation.json").exists()
@@ -252,3 +252,116 @@ def test_saved_installation_reuses_config_and_update_selects_new_digest(
     assert q.run(q.parser().parse_args(["update", "--yes"]), tmp_path) == 0
     assert images == [IMAGE, newer]
     assert pulls == [("pull", IMAGE), ("pull", newer)]
+
+
+def test_all_accounts_are_explicit_and_mutually_exclusive(monkeypatch):
+    docker, _, _ = fixture(accounts=[[3, "C"], [1, "A"], [2, "B"]])
+    monkeypatch.setattr(q, "docker", docker)
+    config = q.discover(q.parser().parse_args(["--yes", "--all-accounts"]), IMAGE)
+    assert config.accounts == [1, 2, 3]
+    with pytest.raises(SystemExit):
+        q.parser().parse_args(["--accounts", "1", "--all-accounts"])
+
+
+def test_interactive_selection_uses_names_and_multiple_accounts(monkeypatch):
+    docker, _, _ = fixture(accounts=[[1, "Vendas"], [2, "Suporte"], [3, "Filial"]])
+    monkeypatch.setattr(q, "docker", docker)
+    monkeypatch.setattr(q.terminal, "interactive", lambda: True)
+
+    def select(title, labels, *, multiple=False):
+        assert multiple
+        assert labels == ["Vendas (#1)", "Suporte (#2)", "Filial (#3)"]
+        return [0, 2]
+
+    monkeypatch.setattr(q.terminal, "select", select)
+    assert q.discover(q.parser().parse_args([]), IMAGE).accounts == [1, 3]
+
+
+def test_selected_accounts_reach_activation_and_default_output_is_simple(
+    monkeypatch, tmp_path, capsys
+):
+    docker, _, _ = fixture(accounts=[[1, "Vendas"], [2, "Suporte"]])
+    monkeypatch.setattr(q, "docker", docker)
+    monkeypatch.setenv("KANBAN_RUNTIME_IMAGE", IMAGE)
+    activated = []
+
+    class Fake:
+        def __init__(self, config, path):
+            self.config = config
+            self.state = State(path)
+
+        def plan(self, *_args):
+            return {"blocked": False, "technical_plan": "internal-value"}
+
+        def install(self, *_args):
+            activated.extend(self.config.accounts)
+            return {"healthy": True, "receipt": "internal-value"}
+
+    monkeypatch.setattr(q, "Lifecycle", Fake)
+    monkeypatch.setattr(
+        q,
+        "docker",
+        lambda *args, **kwargs: "" if args[0] == "pull" else docker(*args, **kwargs),
+    )
+    assert q.run(q.parser().parse_args(["--yes", "--all-accounts"]), tmp_path) == 0
+    assert activated == [1, 2]
+    output = capsys.readouterr().out
+    assert "Vendas" in output and "Suporte" in output
+    assert "Kanban pronto em 2 conta(s)" in output
+    assert "internal-value" not in output and "cw_rails" not in output
+    assert "sha256" not in output
+
+
+def test_unhealthy_status_does_not_claim_ready(monkeypatch, tmp_path, capsys):
+    docker, _, _ = fixture()
+    monkeypatch.setattr(q, "docker", docker)
+    config = q.discover(q.parser().parse_args(["--yes"]), IMAGE)
+    (tmp_path / "installation.json").write_text(config.model_dump_json())
+    monkeypatch.setenv("KANBAN_RUNTIME_IMAGE", IMAGE)
+
+    class Fake:
+        def __init__(self, _config, path):
+            self.state = State(path)
+
+        def preflight(self):
+            pass
+
+        def status(self):
+            return {"healthy": False}
+
+    monkeypatch.setattr(q, "Lifecycle", Fake)
+    assert q.run(q.parser().parse_args(["status"]), tmp_path) == 2
+    assert "ainda não está pronto" in capsys.readouterr().out
+    assert q.run(q.parser().parse_args(["status", "--details"]), tmp_path) == 2
+    assert '"healthy": false' in capsys.readouterr().out
+
+
+def test_interrupt_during_install_records_failure_and_releases_lock(
+    monkeypatch, tmp_path
+):
+    docker, _, _ = fixture()
+    monkeypatch.setattr(
+        q,
+        "docker",
+        lambda *args, **kwargs: "" if args[0] == "pull" else docker(*args, **kwargs),
+    )
+    monkeypatch.setenv("KANBAN_RUNTIME_IMAGE", IMAGE)
+
+    class Fake:
+        def __init__(self, _config, path):
+            self.state = State(path)
+
+        def plan(self, *_args):
+            return {"blocked": False}
+
+        def install(self, *_args):
+            self.state.save(status="installing")
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(q, "Lifecycle", Fake)
+    with pytest.raises(KeyboardInterrupt):
+        q.run(q.parser().parse_args(["--yes"]), tmp_path)
+    state = State(tmp_path / "state")
+    assert state.data["status"] == "failed"
+    state.lock()
+    state.close()
