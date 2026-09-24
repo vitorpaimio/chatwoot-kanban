@@ -95,7 +95,7 @@ def test_template_scopes_resources_and_has_no_secret_values():
     )
     assert (
         document["services"]["api"]["environment"]["WEBHOOK_BASE_URL"]
-        == "http://test-kanban_api:8000"
+        == "https://chat.example.com"
     )
     assert "DATABASE_URL" not in document["services"]["api"]["environment"]
     assert document["services"]["worker"]["healthcheck"]["test"][-2:] == [

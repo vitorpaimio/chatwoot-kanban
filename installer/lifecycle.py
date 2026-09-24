@@ -9,10 +9,12 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 from cryptography.fernet import Fernet
 
 from app.provisioning.attributes import CATALOG, attribute_plan
 from installer.config import Deployment
+from installer.routing import proxy_network
 from installer.runtime import Runtime
 from installer.state import State, write_private
 from installer.swarm import InspectionError
@@ -87,6 +89,14 @@ class Lifecycle:
         # Volumes locais e docker exec exigem o nó certificado. Não inferir HA.
         if len(runtime.run("node", "ls", "-q").decode().split()) != 1:
             raise InspectionError("Este adaptador certifica somente Swarm de nó único.")
+        if (
+            proxy_network(runtime.run, self.config.chatwoot_service)
+            != self.config.network
+        ):
+            raise InspectionError(
+                "A rede gravada difere da rede do Traefik. "
+                "Confira a recuperação no guia de instalação antes de retomar."
+            )
         for name in {self.config.network, self.config.chatwoot_network}:
             network = runtime.json("network", "inspect", name)[0]
             if network.get("Driver") != "overlay" or network.get("Scope") != "swarm":
@@ -359,12 +369,13 @@ class Lifecycle:
         # Inclui o banco preservado de uma desinstalação anterior, antes de migrar.
         self.backup()
         self.migrate_and_start_api()
+        self.wait_public_route()
         api = r.wait_container(c.name + "_api")
         result = r.rails(
             self.request(
                 "install",
                 attributes=[a.payload() for a in CATALOG if a.required],
-                callback=f"http://{c.name}_api:8000",
+                callback=c.callback_url,
             )
         )
         # Token vai diretamente para o banco cifrado; manifesto contém só recibos.
@@ -419,6 +430,37 @@ class Lifecycle:
         spec = self.runtime.json("service", "inspect", self.config.name + "_worker")[0]
         if spec["Spec"]["Mode"]["Replicated"]["Replicas"] == 0:
             raise InspectionError("Worker desativado.")
+
+    def check_public_route(self) -> None:
+        """Exige o loader desta versão pela origem usada pelos atendentes."""
+        if self.config.adapter != "swarm":
+            return
+        try:
+            response = httpx.get(
+                self.config.public_url.rstrip("/") + "/kanban/loader.js",
+                timeout=10,
+                follow_redirects=False,
+                trust_env=False,
+            )
+            expected = (
+                Path(__file__).resolve().parents[1] / "app/static/loader.js"
+            ).read_bytes()
+            if response.status_code != 200 or response.content != expected:
+                raise InspectionError("O acesso público ao Kanban não está pronto.")
+        except httpx.HTTPError:
+            raise InspectionError("O acesso público ao Kanban não respondeu.") from None
+
+    def wait_public_route(self) -> None:
+        """Aguarda propagação do proxy antes de registrar o loader no Chatwoot."""
+        deadline = time.monotonic() + 90
+        while True:
+            try:
+                self.check_public_route()
+                return
+            except InspectionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(3)
 
     def status(self) -> dict:
         """Sonda API, heartbeat do worker e ativação de todas as contas."""
@@ -475,8 +517,16 @@ class Lifecycle:
                 health=health,
                 ready_accounts=count,
             )
+            if self.config.adapter == "swarm":
+                report["public_route"] = "unavailable"
+            self.check_public_route()
+            if self.config.adapter == "swarm":
+                report["public_route"] = "ok"
         except (InspectionError, ValueError, KeyError):
-            report["diagnostic"] = "API, worker ou conta indisponível."
+            report.update(
+                healthy=False,
+                diagnostic="API, worker, conta ou acesso público indisponível.",
+            )
         return report
 
     def uninstall(

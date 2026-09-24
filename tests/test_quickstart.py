@@ -59,11 +59,12 @@ def fixture(
     }
     spec = {
         "Spec": {
+            "TaskTemplate": {"Networks": [{"Target": "shared-id"}]},
             "Labels": {
                 "traefik.http.routers.chat.rule": "Host(`chat.example.com`)",
                 "traefik.http.routers.chat.entrypoints": "websecure",
                 "traefik.swarm.network": "shared",
-            }
+            },
         }
     }
     objects = {c["Id"]: c for c in (rails, db, worker)}
@@ -75,7 +76,24 @@ def fixture(
             return "rails-id\ndb-id\nworker-id\n"
         if args[:2] == ("container", "inspect"):
             return json.dumps([objects[args[2]]])
+        if args == ("service", "ls", "-q"):
+            return "proxy-id"
+        if args[:2] == ("network", "inspect"):
+            return json.dumps([{"Name": "shared"}])
         if args[:2] == ("service", "inspect"):
+            if args[2] == "proxy-id":
+                return json.dumps(
+                    [
+                        {
+                            "Spec": {
+                                "TaskTemplate": {
+                                    "ContainerSpec": {"Image": "traefik:3.7"},
+                                    "Networks": [{"Target": "shared-id"}],
+                                }
+                            }
+                        }
+                    ]
+                )
             if args[2] == "cw_postgres" and db_service_net:
                 task = {"TaskTemplate": {"Networks": [db_service_net]}}
                 return json.dumps([{"Spec": {**spec["Spec"], **task}}])
@@ -97,7 +115,10 @@ def test_swarm_detects_without_sidekiq_and_requires_no_input(monkeypatch):
     assert config.public_url == "https://chat.example.com"
     assert config.network == "shared"
     assert config.entrypoint == "websecure"
-    assert all(call[0][0] in ("ps", "container", "service", "exec") for call in calls)
+    assert all(
+        call[0][0] in ("ps", "container", "service", "network", "exec")
+        for call in calls
+    )
     assert "READ ONLY" in next(data for _, data in calls if data)
 
 
