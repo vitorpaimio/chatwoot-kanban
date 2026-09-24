@@ -10,6 +10,9 @@ Preparação da 0.2.0; nenhuma nova tag ou release publicada nesta etapa.
 
 ### Integração e operação
 
+- Comando de instalação na VPS com descoberta de Chatwoot e imagem de ferramentas.
+- Repositório e imagem públicos; canal privado de vulnerabilidades habilitado.
+
 - Sessão humana e autorização por conta/caixa em cartões, histórico, métricas e SSE.
 - Negociações múltiplas, exclusão recuperável e tarefa compartilhada por contato.
 - Catálogo de atributos, importação retomável, reconciliação e sondas operacionais.

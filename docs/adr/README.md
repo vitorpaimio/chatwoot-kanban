@@ -52,3 +52,5 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 - [ADR-036 — Instalador Compose/Nginx](036-instalador-compose-nginx.md)
 
 - [ADR-037 — Gate da release 0.2.0](037-gate-release.md)
+
+- [ADR-038 — Instalação na VPS](038-instalacao-vps.md)

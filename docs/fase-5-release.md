@@ -34,8 +34,8 @@ precisam ser executadas no GitHub para produzir um digest; nenhum digest foi inv
 | Backup/restauração | Ensaiados nas fases 4 e 4.2 | Repetir no candidato final, preservar dados e provar saúde após falha |
 | Capacidade final | Pendente | Metas e hardware registrados; 20.000 contatos, 5.000 cartões e 30 sessões mistas |
 | Instalação por terceiro | Pendente | Outra pessoa executa o guia em ambiente suportado e registra resultado sem credenciais |
-| Canal privado | Pendente | Habilitar e testar GitHub Private Vulnerability Reporting |
-| Abertura do repositório | Pendente | Decisão operacional do mantenedor e verificação antes de torná-lo público |
+| Canal privado | Habilitado em 24/09/2026 | Private Vulnerability Reporting ativo; envio de relato não ensaiado |
+| Abertura do repositório | Resolvido em 24/09/2026 | Repositório e imagem públicos por autorização do mantenedor |
 | Versão e release nova | Pendente | Atualizar versão para 0.2.0, changelog datado, tag nova e release com digest e matriz |
 
 ## Sequência para concluir

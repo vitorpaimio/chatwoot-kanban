@@ -41,6 +41,7 @@ jobs:
             node --check "$file"
           done
       - run: node --test tests/test_interface.cjs
+      - run: sh -n install.sh
   publish:
     if: github.event_name == 'push'
     needs: test
@@ -87,3 +88,41 @@ jobs:
           name: image-digest-${{ github.sha }}
           path: image-digest.txt
           if-no-files-found: error
+      - name: Publicar instalador com runtime do mesmo commit
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.installer
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            KANBAN_IMAGE=${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+          tags: |
+            ${{ steps.image.outputs.name }}:installer-sha-${{ github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preparar ensaio descartável com Chatwoot real
+        run: |
+          pip install -r requirements.txt pyyaml
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Validar instalação automática e navegador
+        timeout-minutes: 25
+        env:
+          INSTALLER_CANDIDATE: ${{ steps.image.outputs.name }}:installer-sha-${{ github.sha }}
+          KANBAN_DISPOSABLE_CI: quickstart
+          PYTHONPATH: .
+        run: python tests/contracts/quickstart_ci.py
+      - name: Disponibilizar instalador aprovado
+        env:
+          INSTALLER_CANDIDATE: ${{ steps.image.outputs.name }}:installer-sha-${{ github.sha }}
+          INSTALLER_PUBLIC: ${{ steps.image.outputs.name }}:installer-${{ github.ref_name }}
+        run: docker buildx imagetools create --tag "$INSTALLER_PUBLIC" "$INSTALLER_CANDIDATE"

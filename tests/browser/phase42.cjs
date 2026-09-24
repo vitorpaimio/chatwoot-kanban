@@ -5,7 +5,7 @@ let stage = "input";
   let input = '';
   for await (const chunk of process.stdin) input += chunk;
   const human = JSON.parse(input);
-  const browser = await chromium.launch({headless: true, executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+  const browser = await chromium.launch({headless: true, ...(process.platform === 'darwin' ? {executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'} : {})});
   const page = await browser.newPage();
   try {
     stage = 'login';

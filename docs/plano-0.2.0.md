@@ -159,7 +159,7 @@ nativo; não criar rodízio. Outros ambientes dependem de adaptadores certificad
 | Pendência | Fases dependentes |
 |---|---|
 | MIT confirmada pelo mantenedor em 24/09/2026 | Resolvida |
-| Tornar GitHub público e habilitar Private Vulnerability Reporting | 5 |
+| Repositório/imagem públicos e relatos privados habilitados | Resolvida |
 | Certificar implantação final; referência local da Fase 3 aprovada | 5 |
 
 Fase 1 implementada: [evidências e limites](fase-1-autorizacao.md).

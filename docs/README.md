@@ -81,3 +81,5 @@ a auditoria distingue essas descrições da implementação presente.
 
 - [Fase 5: gate e publicação](fase-5-release.md)
 - [Matriz de compatibilidade 0.2.0](compatibilidade-0.2.0.md)
+
+- [Instalação avançada por configuração](instalacao-avancada.md)

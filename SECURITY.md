@@ -5,10 +5,7 @@
 Não publique credenciais, dados pessoais ou detalhes exploráveis em issues públicas.
 O canal escolhido é [GitHub Private Vulnerability Reporting](https://github.com/vitorpaimio/chatwoot-kanban/security/advisories/new).
 
-**TODO do mantenedor:** quando o repositório for público, habilitar Private
-Vulnerability Reporting em Settings → Code security e testar o link acima.
-Enquanto estiver privado ou o recurso não estiver habilitado, o formulário pode
-não estar disponível. Solicite um canal privado ao mantenedor sem publicar detalhes.
+Repositório público e Private Vulnerability Reporting habilitado em 24/09/2026.
 Não há prazo de resposta prometido.
 
 ## Estado de suporte
