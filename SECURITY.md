@@ -16,7 +16,7 @@ Não há prazo de resposta prometido.
 A 0.2.0 está em preparação. Não há certificação de instalação pública em produção.
 Os alvos de compatibilidade são Chatwoot Community Edition 4.16.2 e 4.18.0.
 Consulte o [plano](docs/plano-0.2.0.md) e as
-[evidências da Fase 0](docs/fase-0-contratos-0.2.0.md) para distinguir testes de
+[matriz de compatibilidade](docs/compatibilidade-0.2.0.md) para distinguir testes de
 contrato, testes de navegador e certificação de implantação.
 
 ## Controles implementados
@@ -49,15 +49,16 @@ contrato, testes de navegador e certificação de implantação.
 - O token administrativo usado pelo worker tem alcance superior ao de um agente.
   Nunca o use para descobrir as permissões da sessão humana.
 - Etapa/tarefa têm autoridade local; divergência observada reenfileira o espelho.
-  A reconciliação periódica de eventos perdidos ainda pertence à Fase 2.
-- `/health` atual só indica processo ativo. Verificação de banco/fila, heartbeat
-  do worker e healthchecks dos manifests pertencem às Fases 2 e 4.
+  A reconciliação periódica recupera eventos perdidos, com limites por conta.
+- `/health` verifica banco, atraso da fila e heartbeat do worker; retorna 503
+  quando degradado ou indisponível. O worker tem sonda própria por container.
 - Não há autenticação por Cloudflare Access/JWT implementada ou necessária ao
   contrato de sessão atual. Um cabeçalho de e-mail de proxy não autentica ninguém.
 - Os manifests atuais não implementam todos os controles de endurecimento de
   containers desejáveis. Não presumir filesystem read-only/capabilities removidas.
-- Não há instalador público certificado. Scripts Ruby locais só aceitam Rails em
-  desenvolvimento e não substituem backup completo ou plano de recuperação.
+- Os instaladores foram ensaiados em Swarm e Compose ARM64 com CE 4.18.0.
+  A publicação depende do gate final. Compose foi validado em HTTP local, sem
+  certificação de TLS público. Consulte os limites na matriz de compatibilidade.
 
 ## Operação e desenvolvimento
 

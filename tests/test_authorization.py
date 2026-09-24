@@ -24,6 +24,8 @@ async def seed():
         original = await conn.fetchrow("SELECT * FROM kb_cards WHERE account_id=1")
         await conn.execute("""UPDATE kb_cards SET conversation_id=100,
             conversation_inbox_id=22,created_by=3 WHERE account_id=1""")
+        await conn.execute("""UPDATE kb_contacts SET conversation_id=100,
+            inbox_id=22 WHERE account_id=1 AND contact_id=10""")
         cards = {
             "hidden": original["id"],
             "stage": original["stage_id"],
@@ -102,7 +104,7 @@ async def test_card_reads_writes_and_contact_task_scope(agent_client):
     client = agent_client
     board = (await client.get("/kanban/board")).json()
     assert {c["id"] for c in board["cards"]} == {cards["VISIVEL"], cards["CRIADOR"]}
-    assert {c["contact_id"] for c in board["contacts"]} == {10, 20, 30, 40}
+    assert board["contacts"] == []  # Catálogo pesquisado sob demanda.
     hidden, stage = cards["hidden"], cards["stage"]
     async with connection() as conn:
         foreign = await conn.fetchval("SELECT id FROM kb_cards WHERE account_id=2")
@@ -163,7 +165,7 @@ async def test_card_reads_writes_and_contact_task_scope(agent_client):
 
 @pytest.mark.parametrize(
     "block",
-    ["summary", "funnel", "losses", "sources", "service", "team", "tasks", "timeline"],
+    ["summary", "funnel", "losses", "sources", "team", "tasks", "timeline"],
 )
 @pytest.mark.parametrize("format", ["json", "csv"])
 async def test_metrics_and_exports_exclude_hidden_cards(agent_client, block, format):
@@ -285,6 +287,12 @@ async def test_disabled_account_blocks_every_resource_and_worker(client, monkeyp
     assert (
         await client.put("/kanban/activation", json={"enabled": True})
     ).status_code == 200
+    # Habilitar não contorna um provisionamento ainda pendente.
+    assert (await client.get("/kanban/board")).status_code == 403
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE kb_accounts SET activation_status='ready' WHERE account_id=1"
+        )
     assert (await client.get("/kanban/board")).status_code == 200
 
 
@@ -572,6 +580,8 @@ async def test_activation_does_not_import_or_create_cards(client, monkeypatch):
         async def request(self, method, path, **_kwargs):
             requests.append((method, path))
             if path == "/custom_attribute_definitions":
+                if method == "POST":
+                    return {"id": len(requests), **_kwargs["json"]}
                 return []
             if path == "/webhooks" and method == "GET":
                 return {"payload": {"webhooks": []}}
@@ -594,3 +604,76 @@ async def test_activation_does_not_import_or_create_cards(client, monkeypatch):
             == "ready"
         )
     assert all(not p.startswith("/contacts") for _, p in requests)
+
+
+async def test_same_contact_history_is_scoped_to_card(agent_client):
+    cards = await seed()
+    async with connection() as conn:
+        visible = await conn.fetchval(
+            """INSERT INTO kb_cards
+            (account_id,contact_id,funnel_id,stage_id,created_by,
+             conversation_id,conversation_inbox_id)
+            VALUES(1,10,$1,$2,4,201,11) RETURNING id""",
+            cards["funnel"],
+            cards["stage"],
+        )
+        await record(
+            conn,
+            1,
+            10,
+            ADMIN,
+            "cartao_criado",
+            after={"card_id": visible, "marker": "SEGUNDA_VISIVEL"},
+            funnel=cards["funnel"],
+            sync=False,
+        )
+    history = (await agent_client.get("/kanban/history")).json()
+    assert "SEGUNDA_VISIVEL" in str(history)
+    assert "SEGREDO_CARD" not in str(history)
+    assert (
+        await agent_client.get(f"/kanban/cards/{cards['hidden']}/conversations")
+    ).status_code == 404
+
+
+async def test_conversation_options_filter_inboxes(agent_client, monkeypatch):
+    cards = await seed()
+
+    async def remote(_self, _method, path, **_kwargs):
+        assert path == "/contacts/20/conversations"
+        return {
+            "payload": [
+                {
+                    "id": 200,
+                    "inbox_id": 11,
+                    "status": "open",
+                    "messages": [{"content": "Proposta autorizada"}],
+                },
+                {
+                    "id": 202,
+                    "inbox_id": 22,
+                    "status": "open",
+                    "messages": [{"content": "SEGREDO"}],
+                },
+            ]
+        }
+
+    monkeypatch.setattr("app.chatwoot_client.Chatwoot.request", remote)
+    response = await agent_client.get(f"/kanban/cards/{cards['VISIVEL']}/conversations")
+    assert response.status_code == 200
+    assert [c["id"] for c in response.json()] == [200]
+    assert "SEGREDO" not in response.text
+
+
+async def test_deletion_rejects_inaccessible_cards(agent_client):
+    cards = await seed()
+    for cid in (cards["hidden"], cards["SEM_CONVERSA_ALHEIO"], 99999999):
+        for path, method in (
+            (f"/kanban/cards/{cid}", "DELETE"),
+            (f"/kanban/cards/{cid}/restore", "POST"),
+        ):
+            response = await agent_client.request(method, path, json={"version": 1})
+            assert response.status_code == 404
+    response = await agent_client.request(
+        "DELETE", f"/kanban/cards/{cards['VISIVEL']}", json={"version": 1}
+    )
+    assert response.status_code == 200

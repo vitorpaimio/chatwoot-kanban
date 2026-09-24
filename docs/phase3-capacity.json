@@ -1,0 +1,122 @@
+{
+  "duration_seconds": 300.9546184999999,
+  "requested_seconds": 300.0,
+  "think_time_seconds": 1,
+  "scope": "ASGI local + PostgreSQL real exclusivo; 30 sessões controladas. Não mede autenticação Rails, HTTP real, navegador ou Chatwoot remoto. Métricas somente locais; worker não executado.",
+  "seed": {
+    "accounts": 2,
+    "contacts_per_account": 20000,
+    "cards_per_account": 5000,
+    "tasks_per_account": 1000,
+    "sessions_per_account": 15
+  },
+  "latency_ms": {
+    "board": {
+      "p95": 356.9806660016184,
+      "max": 726.5052500006277,
+      "samples": 931
+    },
+    "sse": {
+      "p95": 519.4082500020158,
+      "max": 1317.0894590002717,
+      "samples": 1845
+    },
+    "board_filtered": {
+      "p95": 258.657750004204,
+      "max": 450.7071249972796,
+      "samples": 930
+    },
+    "metrics/summary": {
+      "p95": 215.41124999930616,
+      "max": 874.3799169969861,
+      "samples": 930
+    },
+    "metrics/tasks": {
+      "p95": 150.82187499501742,
+      "max": 272.15629200509284,
+      "samples": 930
+    },
+    "metrics/team": {
+      "p95": 169.57025000010617,
+      "max": 659.656374999031,
+      "samples": 924
+    },
+    "metrics/funnel": {
+      "p95": 204.76849999977276,
+      "max": 1071.8588750023628,
+      "samples": 924
+    },
+    "metrics/losses": {
+      "p95": 82.9592079971917,
+      "max": 827.664749995165,
+      "samples": 919
+    },
+    "metrics/sources": {
+      "p95": 283.11345799738774,
+      "max": 922.0665409957292,
+      "samples": 905
+    },
+    "metrics/timeline": {
+      "p95": 259.73916700604605,
+      "max": 593.8044590002391,
+      "samples": 903
+    }
+  },
+  "requests": {
+    "board": 931,
+    "board_filtered": 930,
+    "metrics/summary": 930,
+    "metrics/tasks": 930,
+    "metrics/team": 924,
+    "metrics/funnel": 924,
+    "metrics/losses": 919,
+    "metrics/sources": 905,
+    "metrics/timeline": 903
+  },
+  "errors": [],
+  "sse_changes_by_session": [
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    123,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "mutations": 123,
+  "max_connections": {
+    "pool": 10,
+    "postgres_database": 11,
+    "sync_backlog": 2
+  },
+  "process_peak_rss_bytes": 95846400,
+  "sse_reservations_after_cleanup": 0,
+  "targets_ms": {
+    "board": 500,
+    "metrics": 1000,
+    "sse": 2000
+  }
+}

@@ -1,0 +1,11 @@
+http:
+  routers:
+    chatwoot:
+      rule: PathPrefix(`/`)
+      entryPoints: [web]
+      service: chatwoot
+  services:
+    chatwoot:
+      loadBalancer:
+        servers:
+          - url: http://rails:3000

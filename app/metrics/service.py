@@ -1,18 +1,16 @@
 """Cache de cinco minutos e agregação SQL dos dados públicos do Chatwoot."""
 
-import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.chatwoot_client import Chatwoot
 from app.config import settings
 
-_locks = {}
-
 
 async def cached(conn, account, key, fetch):
-    lock = _locks.setdefault((account, key), asyncio.Lock())
-    async with lock:
+    # A transação externa pode manter escritas de outras chaves do cache.
+    # Nunca esperar outra transação aqui: ordens diferentes criariam um ciclo.
+    async with conn.transaction():
         row = await conn.fetchrow(
             (
                 "SELECT payload FROM kb_metrics_cache WHERE account_id=$1 AND"
@@ -23,7 +21,13 @@ async def cached(conn, account, key, fetch):
         )
         if row:
             return row["payload"]
+        writable = await conn.fetchval(
+            "SELECT pg_try_advisory_xact_lock(hashtextextended($1, 0))",
+            f"kanban:metrics:{account}:{key}",
+        )
         payload = await fetch()
+        if not writable:
+            return payload
         await conn.execute(
             (
                 "INSERT INTO kb_metrics_cache(account_id,cache_key,payload) V"
@@ -38,6 +42,10 @@ async def cached(conn, account, key, fetch):
 
 
 async def native_options(conn, account):
+    mappings = await conn.fetchval(
+        "SELECT attribute_mappings FROM kb_accounts WHERE account_id=$1", account
+    )
+
     async def fetch():
         async with await Chatwoot.for_account(conn, account) as cw:
             inboxes = await cw.request("GET", "/inboxes")
@@ -45,7 +53,7 @@ async def native_options(conn, account):
             attributes = await cw.request("GET", "/custom_attribute_definitions")
             return {
                 "temperature_declared": any(
-                    a.get("attribute_key") == "temperatura"
+                    a.get("attribute_key") == mappings.get("temperatura")
                     and a.get("attribute_model") in (1, "contact_attribute")
                     for a in attributes
                 ),
@@ -63,7 +71,9 @@ async def native_options(conn, account):
                 ],
             }
 
-    return await cached(conn, account, "options:v2", fetch)
+    return await cached(
+        conn, account, "options:v3:" + str(mappings.get("temperatura")), fetch
+    )
 
 
 async def service_data(conn, args):

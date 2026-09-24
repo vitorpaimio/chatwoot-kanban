@@ -86,7 +86,6 @@ async def test_multiple_funnels_and_legacy_ambiguity(client):
     stage = next(s for s in data["stages"] if s["funnel_id"] == fid)
     body = {"contact_id": 10, "funnel_id": fid, "stage_id": stage["id"]}
     assert (await client.post("/kanban/cards", json=body)).status_code == 200
-    assert (await client.post("/kanban/cards", json=body)).status_code == 409
     assert (
         await client.patch(
             "/kanban/contacts/10/stage", json={"version": 1, "stage_id": stage["id"]}
@@ -659,7 +658,6 @@ async def test_new_deal_imports_selected_contact_only(client, monkeypatch):
             await conn.fetchval("SELECT count(*) FROM kb_history WHERE contact_id=99")
             == 1
         )
-    assert (await client.post("/kanban/cards", json=body)).status_code == 409
     body["contact_id"] = 100
     assert (await client.post("/kanban/cards", json=body)).status_code == 404
 
@@ -692,3 +690,97 @@ async def test_remove_only_owned_conversation_app(client, monkeypatch):
         await remove_conversation_app(conn, cw)
         await remove_conversation_app(conn, cw)
     assert removed == [1]
+
+
+async def test_multiple_deals_same_funnel_move_independently(client):
+    data = await board(client)
+    original = data["cards"][0]
+    body = {
+        "contact_id": 10,
+        "funnel_id": original["funnel_id"],
+        "stage_id": original["stage_id"],
+    }
+    response = await client.post("/kanban/cards", json=body)
+    assert response.status_code == 200
+    second = response.json()["id"]
+    assert second != original["id"]
+    moved = await client.patch(
+        f"/kanban/cards/{second}",
+        json={
+            "version": 1,
+            "stage_id": data["stages"][1]["id"],
+            "value_cents": 123456,
+        },
+    )
+    assert moved.status_code == 200
+    cards = (await board(client))["cards"]
+    assert len(cards) == 2
+    assert (
+        next(c for c in cards if c["id"] == original["id"])["stage_id"]
+        == original["stage_id"]
+    )
+    assert (
+        await client.put(
+            "/kanban/contacts/10/task",
+            json={
+                "descricao": "Retorno compartilhado",
+                "vencimento": "2026-10-07",
+            },
+        )
+    ).status_code == 200
+    cards = (await board(client))["cards"]
+    assert cards[0]["task_id"] == cards[1]["task_id"]
+    assert (
+        await client.patch(
+            f"/kanban/contacts/10/stage?funnel_id={original['funnel_id']}",
+            json={"version": 1, "stage_id": original["stage_id"]},
+        )
+    ).status_code == 409
+    assert (
+        await client.patch(
+            f"/kanban/cards/{second}",
+            json={
+                "version": 2,
+                "stage_id": data["stages"][1]["id"],
+                "value_cents": 100_000_000_000,
+            },
+        )
+    ).status_code == 422
+
+
+async def test_delete_restore_preserves_contact_task_and_audit(client):
+    data = await board(client)
+    card = data["cards"][0]
+    await client.put(
+        "/kanban/contacts/10/task",
+        json={"descricao": "Preservar tarefa", "vencimento": "2026-10-07"},
+    )
+    url = f"/kanban/cards/{card['id']}"
+    assert (await client.delete(url, params={"account": 2})).status_code != 200
+    result = await client.request("DELETE", url, json={"version": card["version"]})
+    assert result.status_code == 200
+    assert (await board(client))["cards"] == []
+    assert (await client.get(url)).status_code == 404
+    assert (await client.get("/kanban/contacts/10/task")).json()[
+        "descricao"
+    ] == "Preservar tarefa"
+    async with connection() as conn:
+        assert (
+            await conn.fetchval("SELECT count(*) FROM kb_contacts WHERE account_id=1")
+            == 1
+        )
+        assert (await projection(conn, 1, 10))["kanban_etapa"] is None
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM kb_history WHERE action='negociacao_excluida'"
+            )
+            == 1
+        )
+        assert (
+            await conn.fetchval("SELECT count(*) FROM kb_sync WHERE account_id=1") == 1
+        )
+    assert (
+        await client.post(url + "/restore", json={"version": card["version"]})
+    ).status_code == 409
+    assert (await client.post(url + "/restore", json=result.json())).status_code == 200
+    assert len((await board(client))["cards"]) == 1

@@ -1,11 +1,3 @@
-# Integração interna — 23/09/2026
-
-- Menu e quadro incorporado ao Chatwoot, com sessão existente e visão por conversa.
-- Múltiplas contas/funis, tarefas compartilhadas, valores, histórico e relatórios.
-- Alembic, fila transacional, worker, webhooks assinados e atualização SSE.
-- Execução local em localhost:3000, preservação do código do Chatwoot e stack futura Swarm.
-- Testes com PostgreSQL e Chatwoot reais; licença MIT original restaurada.
-
 # Histórico de alterações
 
 As alterações relevantes do projeto são registradas neste arquivo.
@@ -13,6 +5,18 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
 ## [Não lançado]
+
+Preparação da 0.2.0; nenhuma nova tag ou release publicada nesta etapa.
+
+### Integração e operação
+
+- Sessão humana e autorização por conta/caixa em cartões, histórico, métricas e SSE.
+- Negociações múltiplas, exclusão recuperável e tarefa compartilhada por contato.
+- Catálogo de atributos, importação retomável, reconciliação e sondas operacionais.
+- Quadro com paginação e filtros no servidor; capacidade medida na referência local.
+- Instaladores Swarm/Traefik e Compose/Nginx com backup, restore e remoção seletiva.
+- CI cobre instalador e JavaScript próprio; registra digest da imagem e commit testado.
+- Licença MIT confirmada pelo mantenedor para a 0.2.0.
 
 ### Alterado
 
@@ -51,8 +55,9 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 - GitHub Actions para testes e publicação de imagens no GHCR.
 - Configurações preparatórias para Cloudflare Access.
 
-Nota da auditoria: esta cópia não contém `LICENSE`; os workflows publicam apenas
-`linux/arm64`, e a aplicação não implementa a validação JWT. Declarações antigas
-sobre esses recursos não comprovam sua implementação.
+Nota histórica: a auditoria anterior encontrou ausência de `LICENSE` e publicação
+apenas ARM64. A licença MIT foi restaurada; a CI configura duas arquiteturas, cuja
+compilação não equivale a certificação operacional. A autenticação vigente usa a
+sessão do Chatwoot, sem validação JWT do Cloudflare.
 
 [0.1.0]: https://github.com/CrisAlva1414/Chatwoot-Kanban/releases/tag/v0.1.0

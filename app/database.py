@@ -50,10 +50,13 @@ async def connection(user=None):
             yield conn
 
 
-async def require_enabled(conn, account: int) -> None:
+async def require_enabled(conn, account: int, ready: bool = True) -> None:
     """Serializa desativação com requisições e unidades de trabalho em andamento."""
     enabled = await conn.fetchval(
-        "SELECT enabled FROM kb_accounts WHERE account_id=$1 FOR SHARE", account
+        "SELECT enabled AND (NOT $2 OR activation_status='ready') "
+        "FROM kb_accounts WHERE account_id=$1 FOR SHARE",
+        account,
+        ready,
     )
     if not enabled:
         raise HTTPException(403, "Conta não habilitada para o Kanban")

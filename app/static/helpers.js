@@ -5,6 +5,7 @@
         style: "currency",
         currency: "BRL",
       }).format(Number(cents) / 100),
+    moneyInputCents: (value) => Number(String(value).replace(/\D/g, "").replace(/^0+/, "").slice(0, 11) || 0),
     dateBR: (value) =>
       value ? String(value).slice(0, 10).split("-").reverse().join("/") : "—",
     validNavigation: (data, account) =>

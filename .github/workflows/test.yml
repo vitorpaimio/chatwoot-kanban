@@ -1,9 +1,11 @@
 name: Validar e publicar
 on:
   pull_request:
-    branches: [main, develop]
+    branches: [master, main, develop]
   push:
-    branches: [main, develop]
+    branches: [master, main, develop]
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -30,10 +32,14 @@ jobs:
         with:
           node-version: '22'
       - run: pip install -r requirements.txt -r requirements-dev.txt ruff
-      - run: ruff check app migrations scripts tests
+      - run: ruff check app installer migrations scripts tests deploy
       - run: alembic upgrade head
       - run: pytest -q
-      - run: node --check app/static/kanban.js && node --check app/static/loader.js
+      - name: Validar sintaxe JavaScript
+        run: |
+          for file in app/static/*.js tests/*.cjs tests/browser/*.cjs; do
+            node --check "$file"
+          done
       - run: node --test tests/test_interface.cjs
   publish:
     if: github.event_name == 'push'
@@ -55,10 +61,29 @@ jobs:
         shell: bash
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@v6
+        id: build
         with:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
           tags: |
             ${{ steps.image.outputs.name }}:${{ github.ref_name }}
             ${{ steps.image.outputs.name }}:sha-${{ github.sha }}
+      - name: Registrar imagem imutável do commit testado
+        env:
+          IMAGE_NAME: ${{ steps.image.outputs.name }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          test -n "$IMAGE_DIGEST"
+          printf '%s@%s\n' "$IMAGE_NAME" "$IMAGE_DIGEST" > image-digest.txt
+          printf 'Commit testado: `%s`\n\nImagem: `%s@%s`\n' \
+            "$GITHUB_SHA" "$IMAGE_NAME" "$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-digest-${{ github.sha }}
+          path: image-digest.txt
+          if-no-files-found: error

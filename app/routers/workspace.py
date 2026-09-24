@@ -10,14 +10,16 @@ from decimal import Decimal
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.board import board_page
 from app.chatwoot_client import Chatwoot
 from app.config import settings
 from app.database import connection, lock_contact, notify, record
+from app.event_response import EventResponse
 from app.events import hub
 from app.reporting import evolution
+from app.routers.provisioning import configuration_lock
 from app.security import administrator, decrypt, encrypt, identity
 from app.services import refresh_contact, task_state
 
@@ -61,12 +63,13 @@ class Move(Input):
     version: int = Field(gt=0)
     stage_id: int = Field(gt=0)
     before_id: int | None = None
-    value_cents: int | None = Field(default=None, ge=0)
+    value_cents: int | None = Field(default=None, ge=0, le=999_999_999_99)
 
 
 class Task(Input):
     descricao: str = Field(min_length=1, max_length=4000)
     vencimento: date
+    assigned_to: int | None = Field(default=None, gt=0)
     version: int | None = None
 
 
@@ -107,7 +110,8 @@ async def session(user=AUTH):
         account = await conn.fetchrow(
             (
                 """
-        SELECT enabled,activation_status,activation_error,imported_count FROM
+        SELECT enabled,activation_status,activation_error,imported_count,
+        import_status,import_error,provisioning_warnings FROM
         kb_accounts WHERE account_id=$1
         """
             ),
@@ -125,12 +129,15 @@ async def activate(body: Activation, user=AUTH):
     except httpx.HTTPError:
         raise HTTPException(400, "Token sem acesso administrativo à conta") from None
     async with connection() as conn, conn.transaction():
+        await configuration_lock(conn, user["account"])
         await conn.execute(
             (
                 """
-        INSERT INTO kb_accounts(account_id,token_cipher) VALUES($1,$2) ON
+        INSERT INTO kb_accounts(account_id,token_cipher,attribute_mappings)
+        VALUES($1,$2,'{"origem":null,"campanha":null,"temperatura":null}') ON
         CONFLICT(account_id) DO UPDATE SET token_cipher=excluded.token_cipher,
-        activation_status= 'pending' ,activation_error=NULL,enabled=true
+        activation_status= 'pending' ,activation_error=NULL,enabled=true,
+        activation_next_attempt=now(),activation_attempts=0,remote_next_attempt=now()
         """
             ),
             user["account"],
@@ -160,80 +167,33 @@ async def set_activation(body: Enabled, user=AUTH):
     return {"enabled": body.enabled}
 
 
-@router.post("/import")
-async def reimport(user=AUTH):
-    administrator(user)
-    async with connection(user) as conn:
-        require(
-            await conn.fetchval(
-                (
-                    """
-        UPDATE kb_accounts SET activation_status= 'pending'
-        ,activation_error=NULL,import_requested=true WHERE account_id=$1
-        RETURNING account_id
-        """
-                ),
-                user["account"],
-            )
-        )
-    return {"status": "pending"}
-
-
 @router.get("/board")
-async def board(user=AUTH):
-    account = user["account"]
+async def board(
+    user=AUTH,
+    funnel_id: int | None = None,
+    stage_id: int | None = None,
+    contact_id: int | None = None,
+    search: str = Query(default="", max_length=200),
+    assignee_id: int | None = None,
+    label: str = Query(default="", max_length=200),
+    task: str = Query(default="", pattern="^(|none|active|today|overdue)$"),
+    offset: int = Query(default=0, ge=0, le=100000),
+    limit: int = Query(default=50, ge=1, le=100),
+):
     async with connection(user) as conn:
-        funnels = await conn.fetch(
-            (
-                """
-        SELECT * FROM kb_funnels WHERE account_id=$1 AND NOT archived ORDER BY
-        position,id
-        """
-            ),
-            account,
+        return await board_page(
+            conn,
+            user["account"],
+            funnel_id,
+            stage_id,
+            contact_id,
+            search,
+            assignee_id,
+            label,
+            task,
+            offset,
+            limit,
         )
-        stages = await conn.fetch(
-            (
-                """
-        SELECT * FROM kb_stages WHERE account_id=$1 AND NOT archived ORDER BY
-        position,id
-        """
-            ),
-            account,
-        )
-        cards = await conn.fetch(
-            (
-                """
-        SELECT c.*,ct.name,ct.phone,ct.email,ct.thumbnail,ct.labels,
-        ct.assignee_id,ct.assignee_name,ct.last_activity_at,
-        t.id AS task_id,t.message,t.due_date,t.version AS
-        task_version,t.due_state, coalesce(s.status, 'synced' ) AS
-        sync_status,s.last_error FROM kb_visible_cards c JOIN kb_contacts ct
-        USING(account_id,contact_id) JOIN kb_funnels f ON
-        (f.account_id,f.id)=(c.account_id,c.funnel_id) LEFT JOIN kb_tasks t ON
-        t.account_id=c.account_id AND t.contact_id=c.contact_id AND t.status=
-        'active' LEFT JOIN kb_sync s ON
-        (s.account_id,s.contact_id)=(c.account_id,c.contact_id) WHERE
-        c.account_id=$1 AND NOT f.archived ORDER BY c.position,c.id
-        """
-            ),
-            account,
-        )
-        contacts = await conn.fetch(
-            """
-        SELECT contact_id,name FROM kb_contacts WHERE account_id=$1 ORDER BY
-        name
-        """,
-            account,
-        )
-    return jsonable_encoder(
-        {
-            "funnels": [dict(r) for r in funnels],
-            "stages": [dict(r) for r in stages],
-            "cards": [dict(r) for r in cards],
-            "contacts": [dict(r) for r in contacts],
-        }
-    )
 
 
 @router.post("/funnels")
@@ -638,9 +598,7 @@ async def create_card(body: Card, user=AUTH):
         INSERT INTO kb_cards(account_id,contact_id,funnel_id,stage_id,lost_reason,
         created_by,conversation_id,conversation_inbox_id)
         SELECT $1,$2,$3,$4,$5,$6,conversation_id,inbox_id FROM kb_contacts
-        WHERE account_id=$1 AND contact_id=$2 ON
-        CONFLICT(account_id,funnel_id,contact_id) DO
-        NOTHING RETURNING id
+        WHERE account_id=$1 AND contact_id=$2 RETURNING id
         """
             ),
             account,
@@ -650,17 +608,6 @@ async def create_card(body: Card, user=AUTH):
             loss_reason,
             user["id"],
         )
-        if not cid:
-            require(
-                await conn.fetchval(
-                    """SELECT id FROM kb_visible_cards WHERE account_id=$1
-                AND contact_id=$2 AND funnel_id=$3""",
-                    account,
-                    body.contact_id,
-                    body.funnel_id,
-                )
-            )
-            raise HTTPException(409, "Contato já participa deste funil")
         await record(
             conn,
             account,
@@ -801,15 +748,21 @@ async def move_card(conn, card_id, body, user):
 @router.get("/cards/{card_id}")
 async def get_card(card_id: int, user=AUTH):
     async with connection(user) as conn:
-        return dict(
-            require(
-                await conn.fetchrow(
-                    "SELECT * FROM kb_visible_cards WHERE account_id=$1 AND id=$2",
-                    user["account"],
-                    card_id,
-                )
-            )
+        page = await board_page(
+            conn,
+            user["account"],
+            None,
+            None,
+            None,
+            "",
+            None,
+            "",
+            "",
+            0,
+            1,
+            card_id=card_id,
         )
+        return require(page["cards"])[0]
 
 
 @router.get("/contacts/{contact_id}/task")
@@ -824,12 +777,73 @@ async def get_task(contact_id: int, user=AUTH):
             )
         )
         task = await conn.fetchrow(
-            """SELECT id,message AS descricao,due_date AS vencimento,version
+            """SELECT id,message AS descricao,due_date AS vencimento,version,assigned_to
             FROM kb_tasks WHERE account_id=$1 AND contact_id=$2 AND status='active'""",
             user["account"],
             contact_id,
         )
         return dict(task) if task else None
+
+
+async def change_card_deletion(card_id: int, body: Version, user, deleted: bool):
+    """Exclui/restaura uma negociação autorizada na transação do contato."""
+    async with connection(user) as conn:
+        card = require(
+            await conn.fetchrow(
+                "SELECT * FROM kb_authorized_cards WHERE account_id=$1 AND id=$2",
+                user["account"],
+                card_id,
+            )
+        )
+        await lock_contact(conn, user["account"], card["contact_id"])
+        card = require(
+            await conn.fetchrow(
+                "SELECT * FROM kb_authorized_cards WHERE account_id=$1 AND id=$2",
+                user["account"],
+                card_id,
+            )
+        )
+        if card["version"] != body.version:
+            raise HTTPException(409, "Negociação alterada; atualize o quadro")
+        if deleted:
+            await conn.execute(
+                "INSERT INTO kb_card_deletions(account_id,card_id) VALUES($1,$2) "
+                "ON CONFLICT DO NOTHING",
+                user["account"],
+                card_id,
+            )
+        else:
+            await conn.execute(
+                "DELETE FROM kb_card_deletions WHERE account_id=$1 AND card_id=$2",
+                user["account"],
+                card_id,
+            )
+        version = await conn.fetchval(
+            "UPDATE kb_cards SET version=version+1 WHERE account_id=$1 AND id=$2 "
+            "RETURNING version",
+            user["account"],
+            card_id,
+        )
+        await record(
+            conn,
+            user["account"],
+            card["contact_id"],
+            user,
+            "negociacao_excluida" if deleted else "negociacao_restaurada",
+            after={"card_id": card_id},
+            funnel=card["funnel_id"],
+        )
+        return {"version": version}
+
+
+@router.delete("/cards/{card_id}")
+async def delete_card(card_id: int, body: Version, user=AUTH):
+    return await change_card_deletion(card_id, body, user, True)
+
+
+@router.post("/cards/{card_id}/restore")
+async def restore_card(card_id: int, body: Version, user=AUTH):
+    return await change_card_deletion(card_id, body, user, False)
 
 
 @router.patch("/cards/{card_id}")
@@ -842,6 +856,46 @@ async def move(card_id: int, body: Move, user=AUTH):
 class ConversationLink(Input):
     conversation_id: int | None = Field(default=None, gt=0)
     version: int = Field(gt=0)
+
+
+@router.get("/cards/{card_id}/conversations")
+async def conversation_options(card_id: int, user=AUTH):
+    """Lista conversas do contato somente nas caixas autorizadas."""
+    async with connection(user) as conn:
+        card = require(
+            await conn.fetchrow(
+                "SELECT contact_id FROM kb_visible_cards WHERE account_id=$1 AND id=$2",
+                user["account"],
+                card_id,
+            )
+        )
+        async with await Chatwoot.for_account(conn, user["account"]) as cw:
+            response = await cw.request(
+                "GET", f"/contacts/{card['contact_id']}/conversations"
+            )
+        result = []
+        for conversation in response.get("payload", []):
+            if user["role"] != "administrator" and conversation.get(
+                "inbox_id"
+            ) not in user.get("inboxes", []):
+                continue
+            messages = conversation.get("messages") or []
+            message = messages[-1] if messages else {}
+            result.append(
+                {
+                    "id": conversation["id"],
+                    "inbox": (conversation.get("inbox") or {}).get("name")
+                    or f"Caixa {conversation.get('inbox_id', '')}",
+                    "status": conversation.get("status", ""),
+                    "preview": (message.get("content") or "Sem mensagem de texto")[
+                        :250
+                    ],
+                    "last_activity_at": conversation.get("last_activity_at"),
+                }
+            )
+        return sorted(
+            result, key=lambda c: (c["last_activity_at"] or 0, c["id"]), reverse=True
+        )
 
 
 @router.put("/cards/{card_id}/conversation")
@@ -964,12 +1018,43 @@ async def save_task(contact_id: int, body: Task, user=AUTH):
             not old and body.version is not None
         ):
             raise HTTPException(409, "Tarefa alterada por outra pessoa; atualize")
+        assigned_to = (
+            body.assigned_to
+            if "assigned_to" in body.model_fields_set
+            else (old["assigned_to"] if old else user["id"])
+        )
+        if (
+            assigned_to is not None
+            and assigned_to != user["id"]
+            and (not old or assigned_to != old["assigned_to"])
+        ):
+            try:
+                async with await Chatwoot.for_account(conn, account) as cw:
+                    members = await cw.request("GET", "/agents")
+                if isinstance(members, dict):
+                    members = members.get("payload", [])
+                member = next((m for m in members if m["id"] == assigned_to), None)
+                if member is None:
+                    raise HTTPException(422, "Responsável não pertence à conta")
+                await agent(
+                    conn,
+                    {
+                        "account": account,
+                        "id": assigned_to,
+                        "name": member["name"],
+                        "role": member.get("role", "agent"),
+                    },
+                )
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                raise HTTPException(
+                    503, "Não foi possível validar o responsável"
+                ) from None
         if old:
             await conn.execute(
                 (
                     """
         UPDATE kb_tasks SET
-        message=$3,due_date=$4,due_state=$5,version=version+1 WHERE
+        message=$3,due_date=$4,due_state=$5,assigned_to=$6,version=version+1 WHERE
         account_id=$1 AND id=$2
         """
                 ),
@@ -978,14 +1063,15 @@ async def save_task(contact_id: int, body: Task, user=AUTH):
                 body.descricao,
                 body.vencimento,
                 task_state(body.vencimento),
+                assigned_to,
             )
         else:
             await conn.execute(
                 (
                     """
         INSERT INTO
-        kb_tasks(account_id,contact_id,message,due_date,created_by,due_state)
-        VALUES($1,$2,$3,$4,$5,$6)
+        kb_tasks(account_id,contact_id,message,due_date,created_by,due_state,assigned_to)
+        VALUES($1,$2,$3,$4,$5,$6,$7)
         """
                 ),
                 account,
@@ -994,6 +1080,7 @@ async def save_task(contact_id: int, body: Task, user=AUTH):
                 body.vencimento,
                 user["id"],
                 task_state(body.vencimento),
+                assigned_to,
             )
         await record(
             conn,
@@ -1002,7 +1089,7 @@ async def save_task(contact_id: int, body: Task, user=AUTH):
             user,
             "tarefa_editada" if old else "tarefa_criada",
             jsonable_encoder(dict(old)) if old else None,
-            body.model_dump(mode="json"),
+            {**body.model_dump(mode="json"), "assigned_to": assigned_to},
         )
     return {"ok": True}
 
@@ -1197,12 +1284,18 @@ async def visible_revision(user):
 
 @router.get("/events")
 async def events(request: Request, user=AUTH):
-    initial = await visible_revision(user)
+    async with connection(user):
+        pass  # Negar a conta desativada antes dos cabeçalhos SSE.
+    lease = hub.lease(user["account"])
 
     async def stream():
         current = user
-        revision = initial
-        async with hub.subscribe(user["account"]) as signal:
+        async with hub.subscribe(user["account"], lease=lease) as signal:
+            try:
+                revision = await visible_revision(user)
+            except HTTPException:
+                yield "event: expired\ndata: {}\n\n"
+                return
             yield "event: ready\ndata: {}\n\n"
             checked = time.monotonic()
             while not await request.is_disconnected():
@@ -1214,6 +1307,8 @@ async def events(request: Request, user=AUTH):
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(signal.wait(), timeout=wait)
                 changed = signal.is_set()
+                if changed:
+                    await asyncio.sleep(0.1)
                 signal.clear()
                 if hub.connection is None:
                     yield "event: unavailable\ndata: {}\n\n"
@@ -1227,7 +1322,10 @@ async def events(request: Request, user=AUTH):
                         ):
                             raise HTTPException(403, "Sessão alterada")
                         checked = time.monotonic()
-                    updated = await visible_revision(current)
+                    if changed or time.monotonic() >= deadline:
+                        updated = await visible_revision(current)
+                    else:
+                        updated = revision
                 except HTTPException as error:
                     event = "unavailable" if error.status_code == 503 else "expired"
                     yield f"event: {event}\ndata: {{}}\n\n"
@@ -1238,8 +1336,9 @@ async def events(request: Request, user=AUTH):
                 elif not changed:
                     yield ": keepalive\n\n"
 
-    return StreamingResponse(
+    return EventResponse(
         stream(),
+        lease=lease,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

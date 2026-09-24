@@ -43,3 +43,12 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 - [ADR-029 — Contratos e plano da release 0.2.0](029-plano-release-0.2.0.md)
 
 - [ADR-030 — Autorização por caixa e ativação](030-autorizacao-caixas-ativacao.md)
+- [ADR-031 — Negociações múltiplas e estabilidade da edição](031-negociacoes-multiplas-edicao.md)
+- [ADR-032 — Exclusão recuperável de negociações](032-exclusao-recuperavel-negociacoes.md)
+- [ADR-033 — Provisionamento e recuperação por conta](033-catalogo-atributos.md)
+- [ADR-034 — Quadro paginado, tarefas e capacidade local](034-quadro-paginado-capacidade.md)
+
+- [ADR-035 — Instalador Swarm e ciclo de vida](035-instalador-swarm.md)
+- [ADR-036 — Instalador Compose/Nginx](036-instalador-compose-nginx.md)
+
+- [ADR-037 — Gate da release 0.2.0](037-gate-release.md)

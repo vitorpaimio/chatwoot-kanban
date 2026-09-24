@@ -8,7 +8,6 @@
     funnel: "Funil",
     losses: "Motivos de perda",
     sources: "Origem",
-    service: "Atendimento",
     team: "Equipe",
     tasks: "Tarefas",
     timeline: "Evolução",
@@ -490,7 +489,7 @@
         body.append(
           el(
             "p",
-            "Preencha os atributos de contato “origem” e “campanha” no Chatwoot, manualmente, por automação ou n8n. Eles serão copiados para a negociação e atualizados por webhook.",
+            "Configure os atributos de origem e campanha na configuração da conta do Kanban e preencha os campos correspondentes no Chatwoot. Os valores serão copiados para as negociações e atualizados por webhook ou reconciliação.",
             "chart-empty",
           ),
         );
@@ -522,7 +521,6 @@
           ["conversations", "Conversas"],
           ["open", "Abertas agora", false, "service_open"],
           ["unanswered", "Sem resposta agora", true],
-          ["first_response_seconds", "1ª resposta", true],
           ["resolution_seconds", "Resolução", true],
         ],
         result,
@@ -583,7 +581,6 @@
           ["wins", "Ganhos", true],
           ["win_rate", "Taxa de ganho", true],
           ["revenue", "Receita", true],
-          ["first_response_seconds", "1ª resposta", true],
           ["overdue_tasks", "Tarefas vencidas", true],
         ],
         c.rows,

@@ -36,3 +36,18 @@ Formato: `<número>-<data>-<assunto>.md`.
 - [Sessão 022 — Fase 0 da release 0.2.0](022-2026-09-23-fase-0-release.md)
 
 - [Sessão 023 — Fase 1: autorização e ativação](023-2026-09-23-fase-1-autorizacao.md)
+- [Sessão 024 — Correções da validação manual da Fase 1](024-2026-09-23-correcoes-validacao-fase-1.md)
+- [Sessão 025 — Ações, etiquetas e exclusão](025-2026-09-23-acoes-etiquetas-exclusao.md)
+- [Sessão 026 — Timeout no cache de métricas](026-2026-09-23-timeout-cache-metricas.md)
+- [Sessão 027 — Início da Fase 2](027-2026-09-23-inicio-fase-2.md)
+- [Sessão 028 — Conclusão da Fase 2](028-2026-09-23-conclusao-fase-2.md)
+- [Sessão 029 — Fase 3: quadro e capacidade](029-2026-09-24-fase-3-quadro-capacidade.md)
+
+- [Sessão 030 — Início da Fase 4](030-2026-09-24-inicio-fase-4.md)
+
+- [Sessão 031 — Conclusão da Fase 4 e limpeza](031-2026-09-24-conclusao-fase-4.md)
+- [Sessão 032 — Fase 4.2: Compose/Nginx](032-2026-09-24-fase-4.2-compose.md)
+
+- [Sessão 033 — Início da Fase 5](033-2026-09-24-inicio-fase-5.md)
+
+- [Sessão 034 — Envio e guia de instalação](034-2026-09-24-envio-instalador.md)

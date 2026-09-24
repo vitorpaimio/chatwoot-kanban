@@ -8,6 +8,8 @@ let user,
   selected,
   contactContext;
 let authorizationEpoch = 0;
+let loadGeneration = 0;
+let dialogGeneration = 0;
 let editing = false,
   pendingRefresh = false,
   dragged,
@@ -31,6 +33,10 @@ let metadataLoaded = false,
   metadataLoading;
 function icon(name) {
   const paths = {
+    check: ["m5 12 4 4L19 6"],
+    trash: ["M3 6h18", "M9 6V3h6v3", "m5 6 1 15h12l1-15", "M10 10v7M14 10v7"],
+    history: ["M3 12a9 9 0 1 0 3-6.7", "M3 3v6h6", "M12 7v5l3 2"],
+    link: ["M10 13a5 5 0 0 0 7 .1l3-3a5 5 0 0 0-7-7l-2 2", "M14 11a5 5 0 0 0-7-.1l-3 3a5 5 0 0 0 7 7l2-2"],
     task: [
       "M9 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4",
       "m9 14 2 2L21 6",
@@ -182,6 +188,7 @@ async function nativeApi(path) {
   );
   const response = await fetch(`/api/v1/accounts/${account}${path}`, {
     credentials: "same-origin",
+    signal: AbortSignal.timeout(15000),
     headers,
   });
   if (!response.ok) throw new Error("Metadados indisponíveis");
@@ -189,6 +196,8 @@ async function nativeApi(path) {
 }
 function enrichCards() {
   if (metadataLoading) return;
+  const epoch = authorizationEpoch;
+  let changed = false;
   metadataLoading = (async () => {
     if (!metadataLoaded) {
       const results = await Promise.allSettled([
@@ -201,6 +210,7 @@ function enrichCards() {
       if (results[1].status === "fulfilled")
         for (const agent of results[1].value.payload || results[1].value || [])
           metadata.agents.set(agent.id, agent);
+      changed = true;
       metadataLoaded = results.every((result) => result.status === "fulfilled");
     }
     const ids = [
@@ -216,17 +226,19 @@ function enrichCards() {
         while (ids.length) {
           const id = ids.shift();
           try {
-            metadata.conversations.set(
-              id,
-              await nativeApi(`/conversations/${id}`),
-            );
+            const conversation = await nativeApi(`/conversations/${id}`);
+            if (epoch !== authorizationEpoch) return;
+            metadata.conversations.set(id, conversation);
+            changed = true;
           } catch {
             /* Exibir canal genérico sem inventar informação. */
           }
         }
       }),
     );
-    if (!editing && !dragged) render();
+    if (epoch !== authorizationEpoch || !changed) return;
+    renderLabelOptions();
+    if (!editing && !dragged && !moving) render();
     else pendingRefresh = true;
   })()
     .catch(() => {})
@@ -251,7 +263,19 @@ function notice(text) {
 }
 function showError(error) {
   if (error.name === "AbortError") return;
-  notice(error.message || String(error));
+  const message = error.name === "TimeoutError"
+    ? "A consulta demorou demais. Tente novamente."
+    : error.message || String(error);
+  if (editing) {
+    let feedback = $("dialog-error");
+    if (!feedback) {
+      feedback = el("p", "", "dialog-error");
+      feedback.id = "dialog-error";
+      feedback.setAttribute("role", "alert");
+      $("dialog-content").append(feedback);
+    }
+    feedback.textContent = message;
+  } else notice(message);
 }
 async function lossReason() {
   const config = await api("/metrics/configuration");
@@ -305,6 +329,7 @@ async function lossReason() {
       );
     };
     text.oninput = () => text.setCustomValidity("");
+    dismissOutside(modal, () => finish(null));
     modal.showModal();
     select.focus();
   });
@@ -328,17 +353,20 @@ async function api(path, method = "GET", body) {
   const response = await fetch(url, {
     method,
     credentials: "same-origin",
+    signal: AbortSignal.timeout(15000),
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!response.ok) {
     if ([401, 403].includes(response.status)) clearRestrictedData();
     const result = await response.json().catch(() => ({}));
-    throw new Error(
+    const error = new Error(
       typeof result.detail === "string"
         ? result.detail
         : `Falha ${response.status}. Atualize e tente novamente.`,
     );
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }
@@ -368,7 +396,10 @@ function selectField(label, items, value) {
   return [wrapper, input];
 }
 function dialog(title, content, save) {
+  dialogGeneration++;
   editing = true;
+  notice("");
+  document.querySelectorAll(".dialog-extra").forEach((node) => node.remove());
   $("dialog").classList.remove("deal-dialog");
   $("dialog-save").textContent = "Salvar";
   $("dialog-save").disabled = false;
@@ -380,6 +411,7 @@ function dialog(title, content, save) {
     $("dialog-save").disabled = true;
     try {
       if (save) await save();
+      pendingRefresh = false;
       closeDialog();
       await load();
     } catch (e) {
@@ -391,21 +423,35 @@ function dialog(title, content, save) {
   if (!$("dialog").open) $("dialog").showModal();
 }
 function closeDialog() {
+  dialogGeneration++;
   $("dialog").close();
   editing = false;
+  editingCardId = null;
+  refreshHistory = null;
   if (pendingRefresh) {
     pendingRefresh = false;
     load().catch(showError);
   }
 }
 $("dialog-close").onclick = closeDialog;
-$("dialog").addEventListener("cancel", () => {
-  editing = false;
-  if (pendingRefresh) {
-    pendingRefresh = false;
-    load().catch(showError);
-  }
+$("dialog").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeDialog();
 });
+function dismissOutside(modal, close) {
+  let outside = false;
+  const isOutside = (event) => {
+    const rect = modal.getBoundingClientRect();
+    return event.clientX < rect.left || event.clientX > rect.right ||
+      event.clientY < rect.top || event.clientY > rect.bottom;
+  };
+  modal.addEventListener("pointerdown", (event) => { outside = isOutside(event); });
+  modal.addEventListener("click", (event) => {
+    if (outside && isOutside(event)) close();
+    outside = false;
+  });
+}
+dismissOutside($("dialog"), closeDialog);
 function navigate(card) {
   if (!card.conversation_id) return;
   const resource = "conversations", id = card.conversation_id;
@@ -417,14 +463,48 @@ function navigate(card) {
       parent.postMessage(message, location.origin);
   }
 }
-function conversationDialog(card) {
-  const [label, input] = field("ID da conversa (vazio: atividade mais recente)", "number",
-    card.conversation_pinned ? card.conversation_id : "");
-  input.min = "1";
-  dialog("Conversa vinculada", [label], () => api(`/cards/${card.id}/conversation`, "PUT", {
-    conversation_id: input.value ? Number(input.value) : null,
-    version: card.version,
-  }));
+async function conversationDialog(card) {
+  let chosen = card.conversation_pinned ? card.conversation_id : null;
+  let conversations = [];
+  const [searchLabel, search] = field("Buscar conversa", "search", "");
+  search.placeholder = "Busque pelo texto, caixa ou situação";
+  const results = el("div", null, "conversation-results");
+  const status = el("p", "Carregando conversas…", "muted");
+  status.setAttribute("role", "status");
+  const statuses = { open: "Aberta", resolved: "Resolvida", pending: "Pendente", snoozed: "Adiada" };
+  const automatic = button("Usar conversa com atividade mais recente", () => {
+    chosen = null;
+    draw();
+  });
+  function draw() {
+    automatic.setAttribute("aria-pressed", String(chosen === null));
+    results.replaceChildren();
+    const query = search.value.trim().toLocaleLowerCase("pt-BR");
+    const filtered = conversations.filter((c) =>
+      [c.preview, c.inbox, statuses[c.status] || c.status].join(" ").toLocaleLowerCase("pt-BR").includes(query));
+    for (const c of filtered) {
+      const row = button("", () => { chosen = c.id; draw(); });
+      row.className = "conversation-option";
+      row.setAttribute("aria-pressed", String(chosen === c.id));
+      row.append(icon("chat"), el("strong", c.preview),
+        el("small", `${c.inbox} · ${statuses[c.status] || c.status}`));
+      results.append(row);
+    }
+    status.textContent = filtered.length ? "Selecione a conversa que deseja vincular." : "Nenhuma conversa disponível para esta busca.";
+  }
+  search.oninput = draw;
+  dialog("Conversa vinculada", [searchLabel, automatic, status, results], () =>
+    api(`/cards/${card.id}/conversation`, "PUT", { conversation_id: chosen, version: card.version }));
+  const generation = dialogGeneration;
+  $("dialog-save").disabled = true;
+  try {
+    conversations = await api(`/cards/${card.id}/conversations`);
+    if (generation !== dialogGeneration) return;
+    draw();
+    $("dialog-save").disabled = false;
+  } catch (error) {
+    if (generation === dialogGeneration) status.textContent = error.message;
+  }
 }
 function clearRestrictedData() {
   authorizationEpoch++;
@@ -437,6 +517,7 @@ function clearRestrictedData() {
   render();
 }
 function taskDialog(card) {
+  editingCardId = card.id;
   const [msg, m] = field("Tarefa", "textarea", card.message);
   m.required = true;
   m.maxLength = 4000;
@@ -446,26 +527,38 @@ function taskDialog(card) {
     card.due_date,
   );
   d.required = true;
-  const content = [msg, due];
-  if (card.task_id)
-    content.push(
-      button("Concluir tarefa", async () => {
-        await api(`/contacts/${card.contact_id}/task/close`, "POST", {
-          version: card.task_version,
-        });
-        closeDialog();
-        await load();
-      }),
-    );
+  const members = new Map((data.agents || []).map(a => [a.id, a.name]));
+  for (const a of metadata.agents.values()) members.set(a.id, a.name);
+  if (user?.id) members.set(user.id, user.name || "Você");
+  const [owner, o] = selectField("Responsável da tarefa",
+    [["", "Sem responsável"], ...members.entries()],
+    card.task_id ? (card.task_assigned_to || "") : (user?.id || ""));
+  const content = [msg, due, owner];
   dialog(`Tarefa · ${card.name}`, content, () =>
     api(`/contacts/${card.contact_id}/task`, "PUT", {
       descricao: m.value,
       vencimento: d.value,
+      assigned_to: o.value ? Number(o.value) : null,
       version: card.task_version || null,
     }),
   );
+  if (card.task_id) {
+    const complete = button("Concluir tarefa", async () => {
+      complete.disabled = true;
+      try {
+        await api(`/contacts/${card.contact_id}/task/close`, "POST", {version: card.task_version});
+        pendingRefresh = false;
+        closeDialog();
+        await load();
+      } finally { complete.disabled = false; }
+    });
+    complete.className = "dialog-extra task-complete";
+    complete.prepend(icon("check"));
+    $("dialog-save").before(complete);
+  }
 }
 function details(card) {
+  editingCardId = card.id;
   const [stage, s] = selectField(
     "Etapa",
     data.stages
@@ -473,13 +566,20 @@ function details(card) {
       .map((x) => [x.id, x.name]),
     card.stage_id,
   );
-  const [value, v] = field(
-    "Valor em reais",
-    "number",
-    (card.value_cents / 100).toFixed(2),
-  );
-  v.min = 0;
-  v.step = "0.01";
+  const [value, v] = field("Valor em reais", "text", money(card.value_cents));
+  v.inputMode = "numeric";
+  v.maxLength = 17;
+  v.oninput = () => { v.value = money(window.KanbanHelpers.moneyInputCents(v.value)); };
+  const actions = el("div", null, "card-actions");
+  const action = (label, glyph, fn) => {
+    const node = button(label, fn);
+    node.prepend(icon(glyph));
+    actions.append(node);
+  };
+  if (card.conversation_id) action("Abrir conversa", "chat", () => navigate(card));
+  else action("Vincular conversa", "link", () => conversationDialog(card));
+  action("Histórico", "history", () => history(card.contact_id));
+  action(card.task_id ? "Editar tarefa" : "Criar tarefa", "task", () => taskDialog(card));
   const content = [
     el(
       "p",
@@ -493,20 +593,36 @@ function details(card) {
       `Responsável: ${card.assignee_name || "Não atribuído"} · Sincronização: ${syncLabel(card.sync_status)}`,
       "muted",
     ),
-    ...(card.conversation_id ? [button("Abrir conversa", () => navigate(card))] : []),
-    button("Vincular conversa", () => conversationDialog(card)),
-    button("Ver histórico deste contato", () => history(card.contact_id)),
-    button(card.task_id ? "Editar tarefa" : "Criar tarefa", () =>
-      taskDialog(card),
-    ),
+    actions,
   ];
   dialog(card.name, content, () =>
     api(`/cards/${card.id}`, "PATCH", {
       version: card.version,
       stage_id: Number(s.value),
-      value_cents: Math.round(Number(v.value) * 100),
+      value_cents: window.KanbanHelpers.moneyInputCents(v.value),
     }),
   );
+  const remove = button("", () => {
+    dialog("Excluir negociação?", [el("p", "O contato, as conversas e a tarefa compartilhada serão mantidos.")], async () => {
+      const result = await api(`/cards/${card.id}`, "DELETE", {version: card.version});
+      notice("Negociação excluída. ");
+      const undo = button("Desfazer", async () => {
+        undo.disabled = true;
+        try {
+          await api(`/cards/${card.id}/restore`, "POST", {version: result.version});
+          notice("");
+          await load();
+        } finally { undo.disabled = false; }
+      });
+      $("notice").append(undo);
+    });
+    $("dialog-save").textContent = "Excluir negociação";
+  });
+  remove.className = "dialog-extra delete-deal";
+  remove.title = "Excluir negociação";
+  remove.setAttribute("aria-label", "Excluir negociação");
+  remove.append(icon("trash"));
+  $("dialog-close").before(remove);
 }
 const syncLabel = (status) =>
   ({
@@ -515,26 +631,12 @@ const syncLabel = (status) =>
     failed: "Falha na sincronização",
   })[status] || status;
 function render() {
-  const query = $("search").value.toLocaleLowerCase("pt-BR"),
-    assignee = $("assignee").value,
-    label = $("label").value,
-    task = $("task-filter").value;
-  const cards = data.cards.filter(
-    (c) =>
-      c.funnel_id === selected &&
-      (!compact || c.contact_id === contactContext) &&
-      (!query ||
-        [c.name, c.phone, c.message].some((v) =>
-          String(v || "")
-            .toLocaleLowerCase("pt-BR")
-            .includes(query),
-        )) &&
-      (!assignee || String(c.assignee_id) === assignee) &&
-      (!label || c.labels.includes(label)) &&
-      (!task || (task === "none" ? !c.task_id : c.due_state === task)),
-  );
+  renderedFunnel = selected;
+  const cards = data.cards.filter(c => c.funnel_id === selected &&
+    (!compact || c.contact_id === contactContext));
+  const totals = new Map((data.totals || []).map(t => [t.stage_id, t]));
   const failures = data.cards.filter((card) => card.sync_status === "failed");
-  const failedContacts = new Set(failures.map((card) => card.contact_id)).size;
+  const failedContacts = data.failed_contacts ?? new Set(failures.map((card) => card.contact_id)).size;
   $("sync-warning").hidden = !failedContacts;
   $("sync-count").textContent =
     `${failedContacts} ${failedContacts === 1 ? "contato com falha de sincronização" : "contatos com falha de sincronização"}`;
@@ -544,16 +646,18 @@ function render() {
     const column = el("section", null, "column");
     column.dataset.stageId = stage.id;
     const rows = cards.filter((c) => c.stage_id === stage.id);
+    const total = totals.get(stage.id) || {count: rows.length,
+      value_cents: rows.reduce((n, c) => n + c.value_cents, 0)};
     const head = el("div", null, "column-head");
     const dot = el("span", null, "dot");
     dot.style.backgroundColor = stage.color;
     head.append(
       dot,
       el("span", stage.name),
-      el("span", rows.length, "count"),
+      el("span", total.count, "count"),
       el(
         "span",
-        money(rows.reduce((n, c) => n + c.value_cents, 0)),
+        money(total.value_cents),
         "column-total",
       ),
     );
@@ -662,6 +766,11 @@ function render() {
         time.title = new Date(card.last_activity_at).toLocaleString("pt-BR");
         bottom.append(time);
       }
+      if (card.stage_entered_at) {
+        const duration = el("span", `Na etapa ${relativeTime(card.stage_entered_at)}`, "last-activity");
+        duration.title = `Entrada na etapa: ${new Date(card.stage_entered_at).toLocaleString("pt-BR")}`;
+        bottom.append(duration);
+      }
       const agent = metadata.agents.get(card.assignee_id);
       bottom.append(
         avatar(card.assignee_name, agent?.thumbnail || agent?.avatar_url, true),
@@ -682,6 +791,7 @@ function render() {
         due.dateTime = card.due_date;
         due.title = `${card.due_state === "overdue" ? "Vencida" : card.due_state === "today" ? "Vence hoje" : "Vencimento"} · ${dateBR(card.due_date)}`;
         taskBox.append(icon("task"), message, due);
+        if (card.task_assignee_name) taskBox.append(el("span", card.task_assignee_name, "task-owner"));
         item.append(taskBox);
       }
       const taskButton = button("", () => taskDialog(card));
@@ -714,11 +824,21 @@ function render() {
           "empty",
         ),
       );
+    const offset = stageOffsets.get(stage.id) || 0;
+    if (offset || total.count > rows.length) {
+      const pages = el("div", null, "column-pages");
+      const previous = button("Anteriores", () => loadStage(stage.id, Math.max(0, offset - 50)));
+      previous.disabled = !offset;
+      const next = button("Próximos", () => loadStage(stage.id, offset + 50));
+      next.disabled = offset + rows.length >= total.count;
+      pages.append(previous, el("span", `${offset + (rows.length ? 1 : 0)}–${offset + rows.length} de ${total.count}`), next);
+      column.append(pages);
+    }
     $("board").append(column);
   }
   if (!data.funnels.length)
     $("board").append(
-      el("p", "Aguardando ativação e importação dos contatos.", "empty"),
+      el("p", "Aguardando provisionamento da conta.", "empty"),
     );
   if (compact && !contactContext)
     $("board").replaceChildren(
@@ -728,8 +848,10 @@ function render() {
         "empty",
       ),
     );
-  $("summary").textContent =
-    `${cards.length} ${cards.length === 1 ? "negociação" : "negociações"} · ${money(cards.reduce((n, c) => n + c.value_cents, 0))}`;
+  const visibleTotals = data.stages.filter(s => s.funnel_id === selected).map(s => totals.get(s.id)).filter(Boolean);
+  const count = data.totals ? visibleTotals.reduce((n, t) => n + t.count, 0) : cards.length;
+  const value = data.totals ? visibleTotals.reduce((n, t) => n + t.value_cents, 0) : cards.reduce((n, c) => n + c.value_cents, 0);
+  $("summary").textContent = `${count} ${count === 1 ? "negociação" : "negociações"} · ${money(value)}`;
 }
 const dropMarker = el("div", null, "drop-marker");
 dropMarker.setAttribute("aria-hidden", "true");
@@ -823,6 +945,14 @@ $("board").ondrop = async (event) => {
   render();
   $("board").setAttribute("aria-busy", "true");
   try {
+    const loaded = previous.filter(c => c.stage_id === target.stage_id).length;
+    const end = (stageOffsets.get(target.stage_id) || 0) + loaded;
+    const total = data.totals?.find(t => t.stage_id === target.stage_id)?.count || 0;
+    if (target.before_id === null && end < total) {
+      // A borda da página aponta ao próximo cartão, não ao fim da etapa.
+      const next = await api(boardQuery(target.stage_id, end));
+      target.before_id = next.cards[0]?.id || null;
+    }
     await api(`/cards/${card.id}`, "PATCH", {
       version: card.version,
       ...target,
@@ -839,40 +969,81 @@ $("board").ondrop = async (event) => {
     await load().catch(showError);
   }
 };
-async function load() {
-  if (editing || dragged || moving) {
+let editingCardId = null, refreshHistory = null, renderedFunnel = null;
+const stageOffsets = new Map();
+function boardQuery(stage, offset = 0) {
+  const params = new URLSearchParams({limit: selected ? "50" : "1", offset: String(offset),
+    search: $("search").value, label: $("label").value, task: $("task-filter").value});
+  if (selected) params.set("funnel_id", selected);
+  if (stage) params.set("stage_id", stage);
+  if (compact && contactContext) params.set("contact_id", contactContext);
+  if ($("assignee").value) params.set("assignee_id", $("assignee").value);
+  return `/board?${params}`;
+}
+async function loadStage(stage, offset) {
+  const generation = ++loadGeneration, epoch = authorizationEpoch;
+  const next = await api(boardQuery(stage, offset));
+  if (generation !== loadGeneration || epoch !== authorizationEpoch) return;
+  if (editing || moving || dragged) { pendingRefresh = true; return; }
+  data.cards = [...data.cards.filter(c => c.stage_id !== stage), ...next.cards];
+  data.totals = [...(data.totals || []).filter(t => t.stage_id !== stage), ...next.totals];
+  stageOffsets.set(stage, offset);
+  render();
+  enrichCards();
+}
+async function load(force = false) {
+  if (user?.activation && user.activation.activation_status !== "ready") return;
+  if (!force && (editing || dragged || moving)) {
     pendingRefresh = true;
     return;
   }
   const epoch = authorizationEpoch;
-  const next = await api("/board");
-  if (epoch !== authorizationEpoch) return;
+  const generation = ++loadGeneration;
+  if (force && editing && editingCardId) {
+    try { await api(`/cards/${editingCardId}`); }
+    catch (error) { if ([401,403,404].includes(error.status)) clearRestrictedData(); throw error; }
+  }
+  if (force && editing && refreshHistory) await refreshHistory();
+  const next = await api(boardQuery());
+  if (epoch !== authorizationEpoch || generation !== loadGeneration) return;
+  const removed = !next.totals && data.cards.some((card) => !next.cards.some((c) => c.id === card.id));
+  if (removed) {
+    // Remoção de acesso precisa limpar inclusive um detalhe ou histórico aberto.
+    clearRestrictedData();
+  } else if (editing || dragged || moving) {
+    pendingRefresh = true;
+    if (editing && !dragged && !moving) { data = next; stageOffsets.clear(); render(); }
+    return;
+  }
+  const unchanged = JSON.stringify(data) === JSON.stringify(next);
   data = next;
-  if (!data.funnels.some((f) => f.id === selected))
+  stageOffsets.clear();
+  if (unchanged && renderedFunnel === selected && $("board").childElementCount) return;
+  if (!data.funnels.some((f) => f.id === selected)) {
     selected = data.funnels[0]?.id;
+    if (selected) return load(force);
+  }
   renderFunnelPicker();
   options(
     $("assignee"),
     [
       ["", "Responsável"],
       ...new Map(
-        data.cards
-          .filter((c) => c.assignee_id)
-          .map((c) => [c.assignee_id, c.assignee_name]),
+        [...(data.agents || []).map(a => [a.id, a.name]),
+          ...[...metadata.agents.values()].map(a => [a.id, a.name]),
+          ...data.cards.filter(c => c.assignee_id).map(c => [c.assignee_id, c.assignee_name])],
       ).entries(),
     ],
     $("assignee").value,
   );
-  options(
-    $("label"),
-    [
-      ["", "Etiqueta"],
-      ...[...new Set(data.cards.flatMap((c) => c.labels))].map((t) => [t, t]),
-    ],
-    $("label").value,
-  );
+  renderLabelOptions();
   render();
   enrichCards();
+}
+function renderLabelOptions() {
+  const labels = [...new Set([...metadata.labels.keys(), ...data.cards.flatMap((c) => c.labels || [])])];
+  labels.sort((a, b) => a.localeCompare(b, "pt-BR"));
+  options($("label"), [["", "Etiqueta"], ...labels.map((name) => [name, name])], $("label").value);
 }
 function picker(items, value, label, change, heading = false) {
   const root = el("details", null, "picker"),
@@ -935,8 +1106,7 @@ function renderFunnelPicker() {
       "Selecionar funil",
       (id) => {
         selected = id;
-        render();
-        enrichCards();
+        load().catch(showError);
       },
       true,
     ),
@@ -947,9 +1117,14 @@ document.addEventListener("click", (event) => {
     if (!node.contains(event.target)) node.open = false;
   });
 });
-["search", "assignee", "label", "task-filter"].forEach(
-  (id) => ($(id).oninput = render),
-);
+let filterTimer;
+["search", "assignee", "label", "task-filter"].forEach(id => {
+  $(id).oninput = () => {
+    clearTimeout(filterTimer);
+    ++loadGeneration;
+    filterTimer = setTimeout(() => load().catch(showError), id === "search" ? 250 : 0);
+  };
+});
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && dragged) {
     clearDrag();
@@ -1023,14 +1198,9 @@ $("add-card").onclick = () => {
   layout.append(contactPane, destination);
   function updateStages() {
     stages.replaceChildren();
-    const existing = data.cards.find(
-      (c) => c.contact_id === chosen?.id && c.funnel_id === funnelId,
-    );
     const available = data.stages.filter((s) => s.funnel_id === funnelId);
-    stageId = existing ? null : available[0]?.id;
-    feedback.textContent = existing
-      ? "Este contato já tem uma negociação neste funil. Escolha outro funil ou edite a negociação no quadro."
-      : "";
+    stageId = available[0]?.id;
+    feedback.textContent = "";
     $("dialog-save").disabled = !chosen || !stageId;
     for (const stage of available) {
       const option = button("", () => {
@@ -1044,7 +1214,6 @@ $("add-card").onclick = () => {
         dot.style.backgroundColor = stage.color;
       option.append(dot, el("span", stage.name));
       option.setAttribute("aria-pressed", String(stage.id === stageId));
-      option.disabled = Boolean(existing);
       stages.append(option);
     }
   }
@@ -1203,7 +1372,7 @@ function editStage(stage) {
 }
 function manage() {
   const funnel = data.funnels.find((f) => f.id === selected);
-  if (!funnel) return;
+  if (!funnel) return accountSettings();
   const rows = [
     button("Criar funil", () => editFunnel()),
     button("Editar este funil", () => editFunnel(funnel)),
@@ -1291,10 +1460,14 @@ const actionNames = {
   etapa_editada: "Etapa editada",
   etapa_arquivada: "Etapa arquivada",
   configuracao_atualizada: "Configuração atualizada",
+  negociacao_excluida: "Negociação excluída",
+  negociacao_restaurada: "Negociação restaurada",
   cartao_criado: "Cartão criado",
   etapa_arquivada_movimento: "Cartão transferido por arquivamento",
 };
 async function history(contact) {
+  editingCardId = null;
+  refreshHistory = () => fetchPage(true);
   const [funnel, f] = selectField("Funil", [
     ["", "Todos"],
     ...data.funnels.map((x) => [x.id, x.name]),
@@ -1359,15 +1532,57 @@ $("retry").onclick = () =>
       await load();
     })
     .catch(showError);
-$("reimport").onclick = () =>
-  api("/import", "POST")
-    .then(() =>
-      notice("Importação agendada. O progresso aparece ao atualizar a conta."),
-    )
-    .catch(showError);
+$("reimport").onclick = async () => {
+  try {
+    const status = await api("/provisioning");
+    if (["pending", "running", "failed"].includes(status.import_status)) {
+      dialog("Retomar importação", [
+        el("p", `${status.imported_count} contatos processados. ${status.import_error || "Importação em andamento."}`),
+      ], async () => { await api("/import", "POST", { resume: true }); });
+      return;
+    }
+    const estimate = await api("/import/estimate");
+    const [modeLabel, mode] = selectField("O que importar", [
+      ["metadata", "Somente metadados dos contatos"],
+      ["cards", "Metadados e negociações ausentes no funil"],
+    ], "metadata");
+    const [funnelLabel, funnel] = selectField("Funil de destino", data.funnels
+      .filter((f) => !f.archived).map((f) => [f.id, f.name]), selected);
+    const [stageLabel, stage] = selectField("Etapa de destino", []);
+    const update = () => {
+      funnelLabel.hidden = stageLabel.hidden = mode.value !== "cards";
+      options(stage, data.stages.filter((s) => !s.archived && s.kind === "open" &&
+        s.funnel_id === Number(funnel.value)).map((s) => [s.id, s.name]));
+    };
+    mode.onchange = funnel.onchange = update;
+    update();
+    dialog("Importar contatos", [
+      el("p", `Estimativa: ${estimate.contacts} contatos. A importação pode ser retomada após falhas.`),
+      el("p", "Etapas e tarefas existentes permanecem locais. Negociações existentes não serão duplicadas."),
+      modeLabel, funnelLabel, stageLabel,
+    ], async () => {
+      await api("/import", "POST", { mode: mode.value,
+        funnel_id: mode.value === "cards" ? Number(funnel.value) : null,
+        stage_id: mode.value === "cards" ? Number(stage.value) : null });
+      notice("Importação agendada; consulte o progresso na configuração da conta.");
+    });
+  } catch (error) { showError(error); }
+};
+const phaseStatus = (status) => ({
+  ready: "pronto", pending: "na fila", failed: "falhou", idle: "não iniciada",
+  running: "em andamento", complete: "concluída",
+}[status] || status);
 async function accountSettings() {
   try {
     const state = await api("/session");
+    const provisioning = await api("/provisioning");
+    const mappings = ["origem", "campanha", "temperatura"].map((key) => {
+      const [label, input] = field(`Atributo de ${key} (vazio desativa)`, "text",
+        provisioning.attribute_mappings[key] || "");
+      return { key, label, input };
+    });
+    const [limitLabel, limit] = field("Contatos por lote e por conta", "number", provisioning.processing_limit);
+    limit.min = 1; limit.max = 100;
     const [label, token] = field(
       "Novo token de serviço (opcional)",
       "password",
@@ -1382,6 +1597,15 @@ async function accountSettings() {
           `Conta ${account} · ${state.activation?.imported_count || 0} contatos importados.`,
         ),
         el("p", "Fuso horário: Brasília (America/Sao_Paulo)."),
+        el("p", `Provisionamento: ${phaseStatus(provisioning.activation_status)}. ${provisioning.activation_error || ""}`),
+        el("p", `Importação: ${phaseStatus(provisioning.import_status)} · ${provisioning.imported_count} contatos. ${provisioning.import_error || ""}`),
+        ...provisioning.provisioning_warnings.map((w) => el("p", w)),
+        ...mappings.map((m) => m.label), limitLabel,
+        el("p", "Recursos registrados nesta conta:"),
+        ...provisioning.resources.map((r) => el("p", `${r.resource_key}: ${r.ownership === "created" ? "criado pelo Kanban" : "preexistente"}`)),
+        button("Repetir provisionamento", async () => {
+          await api("/provisioning/retry", "POST"); closeDialog(); await init();
+        }),
         label,
         button(state.activation?.enabled ? "Desativar conta" : "Habilitar conta", async () => {
           await api("/activation", "PUT", { enabled: !state.activation?.enabled });
@@ -1391,8 +1615,14 @@ async function accountSettings() {
         }),
       ],
       async () => {
+        const values = Object.fromEntries(mappings.map((m) => [m.key, m.input.value.trim() || null]));
+        if (JSON.stringify(values) !== JSON.stringify(provisioning.attribute_mappings) ||
+            Number(limit.value) !== provisioning.processing_limit) {
+          await api("/provisioning", "PUT", { mappings: values, processing_limit: Number(limit.value) });
+        }
         if (token.value) await api("/activate", "POST", { token: token.value });
         token.value = "";
+        await init();
       },
     );
   } catch (error) {
@@ -1428,20 +1658,25 @@ window.addEventListener("message", (event) => {
     const id = context.data?.contact?.id || conversation?.meta?.sender?.id;
     if (Number.isSafeInteger(id) && id > 0) {
       contactContext = id;
-      render();
+      load().catch(showError);
     }
   }
 });
+let reconnectAttempt = 0;
+function scheduleReconnect() {
+  const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempt++, 5));
+  reconnectTimer = setTimeout(connect, delay + Math.random() * 1000);
+}
 function connect() {
   clearTimeout(reconnectTimer);
   const source = new EventSource(`/kanban/events?account=${account}`);
   source.addEventListener("ready", () => {
+    reconnectAttempt = 0;
     connectionStatus("Atualização em tempo real", "ready");
     load().catch(showError);
   });
   source.addEventListener("change", () => {
-    clearRestrictedData();
-    load().catch(showError);
+    load(true).catch(showError);
   });
   source.addEventListener("expired", () => {
     source.close();
@@ -1453,12 +1688,12 @@ function connect() {
     source.close();
     clearRestrictedData();
     connectionStatus("Chatwoot indisponível · reconectando…", "connecting");
-    reconnectTimer = setTimeout(connect, 5000);
+    scheduleReconnect();
   });
   source.onerror = () => {
     source.close();
     connectionStatus("Reconectando…", "connecting");
-    reconnectTimer = setTimeout(connect, 5000);
+    scheduleReconnect();
   };
   window.addEventListener("pagehide", () => source.close(), { once: true });
 }
@@ -1471,7 +1706,7 @@ async function init() {
     notice("Peça a um administrador para ativar o Kanban nesta conta.");
   if (user.activation && user.activation.activation_status !== "ready") {
     notice(
-      `Importação: ${user.activation.imported_count} contatos · ${user.activation.activation_status === "failed" ? "falhou; use Importar contatos para repetir" : "em andamento"}`,
+      `Provisionamento: ${user.activation.activation_error || "em andamento"}. Consulte a configuração da conta.`,
     );
     setTimeout(() => {
       if (!editing) init().catch(showError);
@@ -1479,7 +1714,7 @@ async function init() {
   }
   if (
     user.activation?.activation_status === "ready" &&
-    $("notice").textContent.startsWith("Importação:")
+    $("notice").textContent.startsWith("Provisionamento:")
   )
     notice("");
   if (user.activation?.enabled === false) {
@@ -1488,10 +1723,14 @@ async function init() {
     if (admin) accountSettings();
     return;
   }
+  if (user.activation?.activation_status !== "ready") {
+    clearRestrictedData();
+    return;
+  }
   await load();
   const focusCard = Number(params.get("card"));
   if (focusCard) {
-    const card = data.cards.find((c) => c.id === focusCard);
+    const card = data.cards.find((c) => c.id === focusCard) || await api(`/cards/${focusCard}`);
     if (card) {
       selected = card.funnel_id;
       renderFunnelPicker();

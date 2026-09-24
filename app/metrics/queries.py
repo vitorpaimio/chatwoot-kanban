@@ -107,12 +107,15 @@ GROUP BY s.id,f.name ORDER BY s.funnel_id,s.position,s.id
 STALE = (
     BASE
     + """
-, activity AS (
-SELECT c.*,greatest(c.created_at,
- (SELECT max(e.created_at) FROM entries e WHERE e.card_id=c.id),
- (SELECT max(t.closed_at) FROM task_scope t WHERE t.contact_id=c.contact_id AND
- t.closed_at<$3)
- ) AS last_activity FROM cards c WHERE c.stage_kind='open'
+, latest_entry AS (
+ SELECT card_id,max(created_at) AS happened FROM entries GROUP BY card_id
+), latest_task AS (
+ SELECT contact_id,max(closed_at) AS happened FROM task_scope
+ WHERE closed_at<$3 GROUP BY contact_id
+), activity AS (
+ SELECT c.*,greatest(c.created_at,e.happened,t.happened) AS last_activity
+ FROM cards c LEFT JOIN latest_entry e ON e.card_id=c.id
+ LEFT JOIN latest_task t ON t.contact_id=c.contact_id WHERE c.stage_kind='open'
 )
 SELECT id,contact_id,funnel_id,name,stale_days,last_activity,
  extract(epoch FROM (least($3,now())-last_activity))/86400 AS idle_days

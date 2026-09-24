@@ -904,3 +904,64 @@ th {
     animation: none;
   }
 }
+
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.card-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  width: auto;
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+  font-size: 13px;
+}
+.card-actions button:hover {
+  color: rgb(var(--slate-12));
+  background: var(--panel);
+  border-color: var(--line);
+}
+.conversation-results {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.conversation-option {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 6px 10px;
+  text-align: left;
+  white-space: normal;
+}
+.conversation-option strong { overflow-wrap: anywhere; }
+.conversation-option small { grid-column: 2; color: var(--muted); }
+.conversation-option[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.dialog-error { color: rgb(var(--ruby-11)); }
+.dialog-heading h2 { flex: 1; }
+.delete-deal { color: var(--muted); background: transparent; }
+.delete-deal:hover { color: rgb(var(--ruby-11)); }
+.task-complete { background: transparent; }
+.dialog-actions { gap: 8px; }
+
+.column-pages {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 4px;
+  font-size: 12px;
+}
+.task-owner {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

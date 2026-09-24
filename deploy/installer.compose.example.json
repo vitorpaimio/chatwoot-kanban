@@ -1,0 +1,19 @@
+{
+  "adapter": "compose",
+  "name": "chatwoot-kanban",
+  "context": "default",
+  "accounts": [1],
+  "image": "ghcr.io/SEU_USUARIO/chatwoot-kanban@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "public_url": "http://localhost:18080",
+  "chatwoot_url": "http://rails:3000",
+  "chatwoot_project": "chatwoot",
+  "chatwoot_service": "rails",
+  "chatwoot_database_service": "postgres",
+  "chatwoot_database": "chatwoot",
+  "chatwoot_database_user": "postgres",
+  "chatwoot_network": "chatwoot_default",
+  "network": "chatwoot_default",
+  "tls": false,
+  "listen_host": "127.0.0.1",
+  "listen_port": 18080
+}

@@ -1,0 +1,68 @@
+version: '3.8'
+x-kanban: &kanban
+  image: kanban-lab:phase4
+  entrypoint: [/bin/sh, /run/config/kanban-entrypoint.sh]
+  environment:
+    CHATWOOT_BASE_URL: http://cwlab_rails:3000
+    PUBLIC_URL: http://localhost:18080
+    WEBHOOK_BASE_URL: http://cwlab_proxy
+    ENV: production
+  secrets: [kb_lab_db_password, kb_lab_encryption_key]
+  configs:
+    - source: entrypoint_v2
+      target: /run/config/kanban-entrypoint.sh
+  networks: [internal, chatwoot]
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: kanban
+      POSTGRES_USER: kanban
+      POSTGRES_PASSWORD_FILE: /run/secrets/kb_lab_db_password
+    secrets: [kb_lab_db_password]
+    networks: [internal]
+    volumes: [data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD, pg_isready, -U, kanban, -d, kanban]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  migrate:
+    <<: *kanban
+    command: [alembic, upgrade, head]
+    deploy:
+      replicas: 0
+      restart_policy:
+        condition: none
+  api:
+    <<: *kanban
+    command: [uvicorn, 'app.main:app', --host, 0.0.0.0, --port, '8000', --no-access-log]
+    deploy:
+      replicas: 1
+  worker:
+    <<: *kanban
+    command: [python, -m, app.worker]
+    healthcheck:
+      test: [CMD, /bin/sh, /run/config/kanban-entrypoint.sh, python, -m, app.health, worker]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    deploy:
+      replicas: 1
+networks:
+  internal:
+    driver: overlay
+  chatwoot:
+    external: true
+    name: cwlab_internal
+volumes:
+  data:
+configs:
+  entrypoint_v2:
+    file: ./kanban-entrypoint.sh
+secrets:
+  kb_lab_db_password:
+    external: true
+  kb_lab_encryption_key:
+    external: true

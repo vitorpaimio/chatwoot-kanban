@@ -28,3 +28,17 @@ por ganhos mais perdas. Nenhuma duração anterior à importação é inventada.
 A trajetória geral mostra os 20 eventos mais recentes. A seleção de contato usa
 a rota de histórico existente, paginada, respeitando funil e período. SSE atualiza
 o painel e refaz a consulta ao reconectar para recuperar eventos perdidos.
+
+## Correção de concorrência do cache — 23/09/2026
+
+O mutex Python por chave era liberado antes do commit da transação externa.
+Outra requisição podia obter o mutex e ficar bloqueada no UPSERT enquanto a
+primeira aguardava esse mesmo mutex para outra leitura. A espera circular esgotava
+o pool e impedia até o carregamento do quadro.
+
+O cache agora usa pg_try_advisory_xact_lock por conta/chave, sem espera. Quando
+outra transação já é responsável pela chave, a requisição consulta o Chatwoot e
+retorna o resultado sem disputar a escrita. Mantém TTL de cinco minutos e as
+transações/autorização existentes. Pode haver consultas remotas duplicadas em
+concorrência; esse custo evita a espera circular e não usa permissões antigas.
+Teste de regressão executa duas transações com chaves em ordem oposta.

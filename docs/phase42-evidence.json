@@ -1,0 +1,87 @@
+{
+  "scope": "Compose local ARM64, Chatwoot CE 4.18.0, HTTP/Nginx",
+  "checks": [
+    {
+      "check": "dry_run",
+      "blocked": false
+    },
+    {
+      "check": "install_repeated",
+      "same_receipt": true
+    },
+    {
+      "check": "human_session",
+      "board": true,
+      "isolation": true,
+      "anonymous_denied": true,
+      "browser": true
+    },
+    {
+      "check": "webhook",
+      "processed": true
+    },
+    {
+      "check": "worker_health",
+      "stopped_detected": true,
+      "recovered": true
+    },
+    {
+      "check": "update",
+      "data_preserved": true
+    },
+    {
+      "check": "failed_update_restore",
+      "data_restored": true,
+      "services_healthy": true
+    },
+    {
+      "check": "uninstall_default",
+      "revoked": true,
+      "attributes_preserved": true,
+      "volume_preserved": true,
+      "repeated": true
+    },
+    {
+      "check": "reinstall_preserved_volume",
+      "healthy": true,
+      "preexisting_preserved": true
+    },
+    {
+      "check": "purge_postconditions",
+      "preexisting_key_preserved": true,
+      "owned_attributes_removed": true,
+      "loader_removed": true,
+      "kanban_containers_removed": true,
+      "chatwoot_still_running": true
+    }
+  ],
+  "environment": {
+    "docker_engine": "29.5.2",
+    "compose": "5.5.1",
+    "nginx": "1.28.3",
+    "nginx_digest": "sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236",
+    "chatwoot": "4.18.0",
+    "architecture": "linux/arm64",
+    "api_process_uid": 10001
+  },
+  "local_tests": {
+    "python_passed": 158,
+    "python_skipped": 2,
+    "javascript_passed": 4,
+    "ruff": "passed"
+  },
+  "cleanup": {
+    "lab_vm_deleted": true,
+    "packages_removed": [
+      "colima",
+      "docker",
+      "docker-buildx",
+      "docker-compose",
+      "lima"
+    ],
+    "runtime_stopped": true,
+    "lab_state_and_backups_deleted": true,
+    "port_18080_closed": true,
+    "original_chatwoot_3000_healthy": true
+  }
+}

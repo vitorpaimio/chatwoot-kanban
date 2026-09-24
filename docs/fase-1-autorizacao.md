@@ -169,3 +169,11 @@ real aprovou 10 grupos em cada versão CE. Fontes do Chatwoot permaneceram intac
 - [tests/contracts/chatwoot_phase0.rb](../tests/contracts/chatwoot_phase0.rb)
 - [tests/test_authorization.py](../tests/test_authorization.py)
 - [tests/test_workspace.py](../tests/test_workspace.py)
+
+## Ajustes após validação manual
+
+A [sessão 024](sesiones/024-2026-09-23-correcoes-validacao-fase-1.md) e o
+[ADR-031](adr/031-negociacoes-multiplas-edicao.md) acrescentam negociações múltiplas
+por contato/funil, autorização de histórico por cartão, seleção de conversas sem
+entrada de ID e estabilidade de edição durante SSE. A tarefa segue compartilhada
+por contato/conta. A migração 007 é obrigatória antes de reiniciar os processos.

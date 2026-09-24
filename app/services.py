@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
-from app.database import lock_primary_contact, notify, record
+from app.database import notify, record, require_enabled
+from app.provisioning.attributes import provision_attributes, remember_resource
 
 SYSTEM = {"id": None, "name": "Sistema"}
 DEFAULT_STAGES = [
@@ -26,7 +27,9 @@ async def projection(conn, account, contact):
         kb_cards c JOIN kb_funnels f ON
         (f.account_id,f.id)=(c.account_id,c.funnel_id) JOIN kb_stages s ON
         (s.account_id,s.id)=(c.account_id,c.stage_id) WHERE c.account_id=$1
-        AND c.contact_id=$2 AND NOT f.archived
+        AND c.contact_id=$2 AND NOT f.archived AND NOT EXISTS
+        (SELECT 1 FROM kb_card_deletions d WHERE
+         (d.account_id,d.card_id)=(c.account_id,c.id)) ORDER BY c.id DESC
         """
         ),
         account,
@@ -41,7 +44,9 @@ async def projection(conn, account, contact):
         contact,
     )
     primary = next((r for r in rows if r["is_primary"]), None)
-    recent = next((r for r in rows if r["id"] == last), primary)
+    recent = next(
+        (r for r in rows if r["id"] == last), primary or next(iter(rows), None)
+    )
     task = await conn.fetchrow(
         (
             """
@@ -137,43 +142,30 @@ async def refresh_contact(conn, cw, contact_id, project_cards=True):
             linked.get("id"),
             linked.get("inbox_id"),
         )
-    if project_cards and cards:
+    has_local_state = bool(cards) or await conn.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM kb_tasks WHERE account_id=$1 AND contact_id=$2)",
+        account,
+        contact_id,
+    )
+    if project_cards and has_local_state:
         expected = await projection(conn, account, contact_id)
         if any(attributes.get(k) != v for k, v in expected.items()):
             await record(conn, account, contact_id, SYSTEM, "espelho_divergente")
     await notify(conn, account)
 
 
-async def setup_account(conn, cw):
-    definitions = await cw.request("GET", "/custom_attribute_definitions")
-    keys = {(a["attribute_key"], a["attribute_model"]): a for a in definitions}
+async def setup_account(conn, cw, progress=None):
+    await provision_attributes(conn, cw, progress=progress)
+    async with conn.transaction():
+        await require_enabled(conn, cw.account, ready=False)
+        await setup_resources(conn, cw)
+    async with conn.transaction():
+        await require_enabled(conn, cw.account, ready=False)
+        await finish_setup(conn, cw)
+
+
+async def setup_resources(conn, cw):
     stage_names = [s[0] for s in DEFAULT_STAGES]
-    desired = [
-        ("kanban_etapa", "Funil / Etapa", 0, []),
-        ("kanban_tarefa", "Tarefa do Kanban", 0, []),
-        ("kanban_tarefa_vencimento", "Vencimento da tarefa", 5, []),
-    ]
-    for key, label, kind, values in desired:
-        existing = keys.get((key, "contact_attribute")) or keys.get((key, 1))
-        if existing and existing["attribute_display_type"] not in (
-            kind,
-            {0: "text", 5: "date"}[kind],
-        ):
-            raise ValueError(f"Tipo incompatível para {key}")
-        if not existing and any(a["attribute_key"] == key for a in definitions):
-            raise ValueError(f"Modelo incompatível para {key}")
-        if not existing:
-            await cw.request(
-                "POST",
-                "/custom_attribute_definitions",
-                json={
-                    "attribute_key": key,
-                    "attribute_display_name": label,
-                    "attribute_display_type": kind,
-                    "attribute_model": 1,
-                    "attribute_values": values,
-                },
-            )
     async with conn.transaction():
         funnel = await conn.fetchval(
             (
@@ -211,10 +203,12 @@ async def setup_account(conn, cw):
     from app.config import settings
     from app.security import encrypt
 
-    webhook_url = f"{settings.public_url}/kanban/webhooks/{cw.account}/events"
+    callback_base = (settings.webhook_base_url or settings.public_url).rstrip("/")
+    webhook_url = f"{callback_base}/kanban/webhooks/{cw.account}/events"
     response = await cw.request("GET", "/webhooks")
     hooks = response.get("payload", {}).get("webhooks", [])
     hook = next((h for h in hooks if h["url"] == webhook_url), None)
+    created_hook = hook is None
     if not hook:
         result = await cw.request(
             "POST",
@@ -234,6 +228,9 @@ async def setup_account(conn, cw):
             },
         )
         hook = result["payload"]["webhook"]
+    await remember_resource(
+        conn, cw.account, "webhook", webhook_url, hook, created_hook
+    )
     await conn.execute(
         """
         UPDATE kb_accounts SET webhook_id=$2,webhook_cipher=$3 WHERE
@@ -243,32 +240,15 @@ async def setup_account(conn, cw):
         hook["id"],
         encrypt(hook["secret"]),
     )
+
+
+async def finish_setup(conn, cw):
     await remove_conversation_app(conn, cw)
-    if await conn.fetchval(
-        "SELECT import_requested FROM kb_accounts WHERE account_id=$1", cw.account
-    ):
-        page, count = 1, 0
-        while True:
-            response = await cw.request("GET", "/contacts", params={"page": page})
-            contacts = response.get("payload", [])
-            if not contacts:
-                break
-            for contact in contacts:
-                async with conn.transaction():
-                    await lock_primary_contact(conn, cw.account, contact["id"])
-                    await refresh_contact(conn, cw, contact["id"])
-                count += 1
-                await conn.execute(
-                    "UPDATE kb_accounts SET imported_count=$2 WHERE account_id=$1",
-                    cw.account,
-                    count,
-                )
-            page += 1
     await conn.execute(
         (
             """
         UPDATE kb_accounts SET activation_status= 'ready'
-        ,activation_error=NULL,import_requested=false WHERE account_id=$1
+        ,activation_error=NULL,activation_attempts=0 WHERE account_id=$1
         """
         ),
         cw.account,

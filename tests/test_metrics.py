@@ -149,11 +149,7 @@ async def test_funnel_conversion_dwell_and_stale(client, metric_data):
     assert [c["id"] for c in r["stale"]] == [metric_data["ids"][4]]
 
 
-async def test_losses_sources_team_tasks_timeline(client, metric_data, monkeypatch):
-    async def remote(*_):
-        return {"agents": [{"assignee_id": 3, "first_response_seconds": 60}]}
-
-    monkeypatch.setattr("app.routers.metrics.service_data", remote)
+async def test_losses_sources_team_tasks_timeline(client, metric_data):
     loss = (await block(client, "losses"))["current"]["rows"][0]
     assert (
         loss["reason"] == "Preço"
@@ -170,12 +166,7 @@ async def test_losses_sources_team_tasks_timeline(client, metric_data, monkeypat
         source["revenue"],
     ) == ("Site", "Agosto", 2, 1, 50, 10000)
     team = (await block(client, "team"))["current"]["rows"][0]
-    assert (
-        team["leads"] == 2
-        and team["wins"] == 1
-        and team["overdue_tasks"] == 1
-        and team["first_response_seconds"] == 60
-    )
+    assert team["leads"] == 2 and team["wins"] == 1 and team["overdue_tasks"] == 1
     tasks = (await block(client, "tasks"))["current"]
     assert tasks == {"open": 1, "overdue": 1, "completed": 2, "on_time_rate": 50}
     days = (await block(client, "timeline"))["current"]["rows"]
@@ -294,99 +285,11 @@ async def test_contact_dimensions_copy_clear_and_isolate(client):
         assert event["temperature"] is None and event["inbox_id"] is None
 
 
-async def test_service_sql_filters_cache_and_exports(client, metric_data, monkeypatch):
-    calls = []
-
-    class Remote:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_):
-            pass
-
-        async def request(self, _method, path, params=None):
-            calls.append(path)
-            if path == "/agents":
-                return [{"id": 3, "name": "Ana"}]
-            if path == "/inboxes":
-                return {"payload": [{"id": 1, "name": "Site"}]}
-            if path == "/conversations":
-                if params["page"] > 1:
-                    return {"data": {"payload": []}}
-                return {
-                    "data": {
-                        "payload": [
-                            {
-                                "id": i,
-                                "created_at": dt(11).timestamp(),
-                                "inbox_id": inbox,
-                                "status": status,
-                                "waiting_since": dt(12).timestamp()
-                                if status == "open"
-                                else None,
-                                "first_reply_created_at": dt(11).timestamp(),
-                                "meta": {
-                                    "sender": {"id": 21},
-                                    "assignee": {"id": agent},
-                                },
-                            }
-                            for i, inbox, agent, status in [
-                                (1, 1, 3, "open"),
-                                (2, 1, 3, "resolved"),
-                                (3, 2, 4, "open"),
-                            ]
-                        ]
-                    }
-                }
-            if path.endswith("/drilldown"):
-                metric = params["metric"]
-                values = (
-                    [60, 180, 900]
-                    if metric == "avg_first_response_time"
-                    else [300, 900, 3600]
-                )
-                return {
-                    "meta": {"total_count": 3},
-                    "payload": [
-                        {
-                            "occurred_at": dt(12).timestamp(),
-                            "metric_value": value,
-                            "conversation": {
-                                "contact_id": 21,
-                                "inbox_id": inbox,
-                                "assignee_id": agent,
-                            },
-                        }
-                        for value, inbox, agent in zip(
-                            values, [1, 1, 2], [3, 3, 4], strict=True
-                        )
-                    ],
-                }
-            return {}
-
-    async def remote(*_):
-        return Remote()
-
-    monkeypatch.setattr("app.metrics.service.Chatwoot.for_account", remote)
-    query = f"&inbox_id=1&assignee_id=3&funnel_id={metric_data['funnel']}"
-    response = await block(client, "service", query)
-    r = response["current"]
-    assert (r["conversations"], r["open"], r["unanswered"]) == (2, 1, 1)
-    assert r["first_response_seconds"] == 120 and r["resolution_seconds"] == 600
-    assert r["longest_wait"]["id"] == 1
-    assert r["inboxes"][0]["quantity"] == 2
-    assert response["previous"]["conversations"] == 0
-    assert response["previous"]["first_response_seconds"] is None
-    assert response["variation"]["open"] is None
-    count = len(calls)
-    await block(client, "service", query)
-    assert len(calls) == count
-    for name in ("service", "team"):
-        response = await client.get(
-            f"/kanban/metrics/{name}?start=2026-08-10&end=2026-08-16&format=csv{query}"
-        )
-        assert response.status_code == 200
-        assert "text/csv" in response.headers["content-type"]
+async def test_service_delegated_to_chatwoot(client):
+    for format in ("json", "csv"):
+        response = await client.get(f"/kanban/metrics/service?format={format}")
+        assert response.status_code == 409
+        assert "Chatwoot" in response.json()["detail"]
 
 
 async def test_source_and_campaign_aggregations(client, metric_data):

@@ -1,0 +1,20 @@
+{
+  "name": "kanban",
+  "context": "default",
+  "accounts": [
+    1
+  ],
+  "image": "ghcr.io/organizacao/kanban@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "public_url": "https://chat.example.com",
+  "chatwoot_url": "http://chatwoot_rails:3000",
+  "chatwoot_service": "chatwoot_rails",
+  "chatwoot_database_service": "chatwoot_postgres",
+  "chatwoot_database": "chatwoot",
+  "chatwoot_database_user": "postgres",
+  "chatwoot_network": "network_public",
+  "network": "network_public",
+  "rails_wrapper": [],
+  "entrypoint": "websecure",
+  "tls": true,
+  "allow_local_image": false
+}

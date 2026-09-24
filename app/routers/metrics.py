@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from app.database import connection, notify
 from app.metrics import queries
-from app.metrics.service import native_options, service_data
+from app.metrics.service import native_options
 from app.security import administrator, get_actor
 
 router = APIRouter(prefix="/kanban/metrics")
@@ -102,7 +102,9 @@ async def options(user=AUTH):
         temperature = await conn.fetchval(
             (
                 "SELECT exists(SELECT 1 FROM kb_contacts WHERE account_id=$1 "
-                "AND remote_attributes ? 'temperatura')"
+                "AND "
+                "kb_attribute_value(account_id,remote_attributes,'temperatura') "
+                "IS NOT NULL)"
             ),
             user["account"],
         )
@@ -163,7 +165,7 @@ async def configure(body: Configuration, user=AUTH):
 
 async def calculate(conn, block, args):
     if block == "service":
-        return await service_data(conn, args)
+        raise HTTPException(409, "Consulte os indicadores de atendimento no Chatwoot.")
     sql = getattr(queries, block.upper())
     if block in ("summary", "tasks"):
         return dict(await conn.fetchrow(sql, *args))
@@ -212,6 +214,8 @@ async def metrics(
         inbox_id,
     )
     async with connection(user) as conn:
+        # Planos genéricos degradam os filtros opcionais e a seleção por conta.
+        await conn.execute("SET LOCAL plan_cache_mode = force_custom_plan")
         if funnel_id and not await conn.fetchval(
             "SELECT 1 FROM kb_funnels WHERE account_id=$1 AND id=$2",
             user["account"],
@@ -229,21 +233,6 @@ async def metrics(
                     "novamente."
                 ),
             ) from exc
-        if block == "team":
-            try:
-                service = await service_data(conn, args)
-                old_service = await service_data(conn, previous_args)
-                for result, remote in ((current, service), (previous, old_service)):
-                    by_agent = {
-                        a["assignee_id"]: a["first_response_seconds"]
-                        for a in remote["agents"]
-                    }
-                    for row in result["rows"]:
-                        row["first_response_seconds"] = by_agent.get(row["assignee_id"])
-            except (httpx.HTTPError, ValueError):
-                current["warning"] = (
-                    "Tempos de primeira resposta indisponíveis no Chatwoot."
-                )
     result = {
         "current": current,
         "previous": previous,

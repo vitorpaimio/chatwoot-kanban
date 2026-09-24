@@ -72,3 +72,12 @@ a auditoria distingue essas descrições da implementação presente.
 - [Sessão do menu Pipeline](sesiones/016-2026-09-23-menu-pipeline.md)
 - [ADR-025 — Design system do quadro](adr/025-design-system-quadro.md)
 - [Sessão do visual do quadro](sesiones/017-2026-09-23-visual-quadro.md)
+
+- [Fase 2 — Provisionamento, autoridade e recuperação](fase-2-provisionamento-recuperacao.md)
+- [Fase 3 — Quadro paginado, métricas locais e capacidade](fase-3-quadro-capacidade.md)
+
+- [Fase 4 — Instalador Swarm/Traefik e ciclo de vida](fase-4-instalador.md)
+- [Fase 4.2: instalador Compose/Nginx](fase-4.2-compose.md)
+
+- [Fase 5: gate e publicação](fase-5-release.md)
+- [Matriz de compatibilidade 0.2.0](compatibilidade-0.2.0.md)

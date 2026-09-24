@@ -9,7 +9,11 @@ services:
     env_file: .env
     command: [python, -m, app.worker]
     healthcheck:
-      disable: true
+      test: [CMD, python, -m, app.health, worker]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
 # O banco e o Chatwoot são externos. Execute Alembic antes de iniciar os serviços.
 # Para Swarm/Traefik, use deploy/stack.yml e o procedimento documentado.

@@ -8,7 +8,9 @@ from fastapi.staticfiles import StaticFiles
 
 from app.database import close_pool, init_pool
 from app.events import hub
+from app.health import health_status
 from app.routers.metrics import router as metrics_router
+from app.routers.provisioning import router as provisioning_router
 from app.routers.workspace import router
 from app.security import cipher
 
@@ -34,6 +36,7 @@ app = FastAPI(
     openapi_url=None,
 )
 app.include_router(router)
+app.include_router(provisioning_router)
 app.include_router(metrics_router)
 app.mount("/kanban/static", StaticFiles(directory=ROOT / "static"), name="static")
 
@@ -70,7 +73,16 @@ async def loader():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    result = await health_status()
+    return JSONResponse(result, status_code=200 if result["status"] == "ok" else 503)
+
+
+@app.get("/health/worker")
+async def worker_health():
+    result = await health_status()
+    healthy = result.get("worker") == "ok"
+    return JSONResponse({"status": "ok" if healthy else "unavailable"},
+                        status_code=200 if healthy else 503)
 
 
 @app.exception_handler(asyncpg.UniqueViolationError)

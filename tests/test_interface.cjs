@@ -20,3 +20,10 @@ test("navegação recusa conta, recurso e identificador adulterados", () => {
   assert.ok(!validNavigation({ ...valid, resource: "javascript:alert(1)" }, 1));
   assert.ok(!validNavigation({ ...valid, id: "../settings" }, 1));
 });
+test("entrada monetária limita centavos e aceita colagem em reais", () => {
+  const { moneyInputCents } = require("../app/static/helpers.js");
+  assert.equal(moneyInputCents("R$ 1.299,90"), 129990);
+  assert.equal(moneyInputCents("999999999999999999999999"), 99999999999);
+  assert.equal(moneyInputCents("R$ 0,001"), 1);
+  assert.equal(moneyInputCents(""), 0);
+});

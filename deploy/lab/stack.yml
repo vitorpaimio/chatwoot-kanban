@@ -1,0 +1,118 @@
+version: '3.8'
+x-chatwoot: &chatwoot
+  image: chatwoot/chatwoot@sha256:991d6fe4e1553757987093c5e7345322ce46cbf4a932061efbb13e15bb928565
+  entrypoint: [/bin/sh, /run/config/chatwoot-entrypoint.sh]
+  environment:
+    RAILS_ENV: production
+    NODE_ENV: production
+    INSTALLATION_ENV: docker
+    FRONTEND_URL: http://localhost:18080
+    SAFE_FETCH_ALLOW_PRIVATE_NETWORK: 'true'
+    FORCE_SSL: 'false'
+    ENABLE_ACCOUNT_SIGNUP: 'true'
+    DEFAULT_LOCALE: pt_BR
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: '5432'
+    POSTGRES_DATABASE: chatwoot
+    POSTGRES_USERNAME: postgres
+    REDIS_URL: redis://redis:6379
+    RAILS_LOG_TO_STDOUT: 'true'
+    LOG_LEVEL: warn
+    ACTIVE_STORAGE_SERVICE: local
+    RAILS_MAX_THREADS: '3'
+    WEB_CONCURRENCY: '1'
+    SIDEKIQ_CONCURRENCY: '3'
+  secrets: [cw_lab_db_password, cw_lab_secret_key_base]
+  configs:
+    - source: chatwoot_entrypoint
+      target: /run/config/chatwoot-entrypoint.sh
+  volumes: [storage:/app/storage]
+  networks: [internal]
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: chatwoot
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/cw_lab_db_password
+    secrets: [cw_lab_db_password]
+    volumes: [postgres:/var/lib/postgresql/data]
+    networks: [internal]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U postgres -d chatwoot']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --appendonly, 'yes']
+    volumes: [redis:/data]
+    networks: [internal]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  prepare:
+    <<: *chatwoot
+    command: [bundle, exec, rails, 'db:chatwoot_prepare']
+    deploy:
+      replicas: 0
+      restart_policy:
+        condition: none
+  rails:
+    <<: *chatwoot
+    command: [bundle, exec, rails, server, -b, 0.0.0.0, -p, '3000']
+    deploy:
+      replicas: 1
+    healthcheck:
+      test: [CMD, ruby, -rnet/http, -e, "exit(Net::HTTP.get_response(URI('http://127.0.0.1:3000/api')).code == '200' ? 0 : 1)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+  sidekiq:
+    <<: *chatwoot
+    command: [bundle, exec, sidekiq, -C, config/sidekiq.yml]
+    deploy:
+      replicas: 1
+  proxy:
+    image: traefik:v3
+    command:
+      - --entrypoints.web.address=:80
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --log.level=WARN
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedbydefault=false
+      - --providers.swarm.refreshseconds=2
+    configs:
+      - source: traefik_routes_swarm
+        target: /etc/traefik/dynamic.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - target: 80
+        published: 18080
+        protocol: tcp
+        mode: host
+    networks: [internal, public]
+networks:
+  internal:
+    driver: overlay
+  public:
+    external: true
+    name: network_public
+volumes:
+  postgres:
+  redis:
+  storage:
+configs:
+  chatwoot_entrypoint:
+    file: ./chatwoot-entrypoint.sh
+  traefik_routes_swarm:
+    file: ./traefik.yml
+secrets:
+  cw_lab_db_password:
+    external: true
+  cw_lab_secret_key_base:
+    external: true

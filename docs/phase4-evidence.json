@@ -1,0 +1,83 @@
+{
+  "scope": "Swarm single-node ARM64, Chatwoot CE 4.18.0",
+  "checks": [
+    {
+      "check": "repeated_install",
+      "same_resources": true
+    },
+    {
+      "check": "required_conflict",
+      "blocked_without_state": true
+    },
+    {
+      "check": "two_installations",
+      "healthy": true
+    },
+    {
+      "check": "traefik_proxy",
+      "both_origins": true
+    },
+    {
+      "check": "worker_health",
+      "stopped_detected": true,
+      "recovered": true
+    },
+    {
+      "check": "update",
+      "settings_preserved": true
+    },
+    {
+      "check": "failed_update_restore",
+      "previous_settings_restored": true
+    },
+    {
+      "check": "uninstall_default",
+      "token_revoked": true,
+      "preexisting_attributes_preserved": true,
+      "other_installation_healthy": true,
+      "repeated": true
+    },
+    {
+      "check": "uninstall_purge",
+      "confirmation_required": true,
+      "owned_removed": true,
+      "preexisting_preserved": true,
+      "loader_removed": true
+    },
+    {
+      "check": "native_webhook",
+      "processed": 1,
+      "account": 2
+    },
+    {
+      "check": "reinstall_preserved_volume",
+      "healthy": true
+    },
+    {
+      "check": "human_browser",
+      "board_loaded": true,
+      "account": 1
+    }
+  ],
+  "environment": {
+    "docker": "29.5.2",
+    "traefik": "Version:      3.7.13\nCodename:     langres\nGo version:   go1.26.8\nBuilt:        2026-09-04T12:32:12Z\nOS/Arch:      linux/arm64",
+    "chatwoot": "4.18.0 CE",
+    "architecture": "arm64",
+    "nodes": 1
+  },
+  "cleanup": {
+    "vm_and_data_deleted": true,
+    "packages_removed": [
+      "colima",
+      "lima",
+      "docker",
+      "docker-compose",
+      "docker-buildx"
+    ],
+    "generated_configs_caches_backups_deleted": true,
+    "port_18080_closed": true,
+    "original_chatwoot_http_ok": true,
+    "project_preserved": true
+  }
+}

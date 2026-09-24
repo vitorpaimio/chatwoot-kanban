@@ -23,7 +23,8 @@ Não reutilizar tags anteriores. Este plano não altera a versão publicada do p
 - Uma tarefa ativa por contato/conta; responsável inicial é o criador, editável.
   Alteração do responsável da conversa não reatribui automaticamente a tarefa.
 - Primeiro adaptador: Docker Swarm + Traefik, rede padrão `network_public`
-  configurável. Segundo: Compose + Nginx. Portainer é gerenciador da stack.
+  configurável. Segundo: Compose + Nginx, implementado na Fase 4.2. Portainer é
+  gerenciador da stack.
 - Instalador cria usuário de serviço dedicado, administrador somente nas contas
   selecionadas; plano explícito, manifesto e revogação na desinstalação.
   Token cifrado no Kanban, nunca em logs, argumentos ou temporários.
@@ -113,7 +114,25 @@ Uninstall preserva atributos por padrão; nunca apaga preexistentes. Somente
 potencial de valores. Não imprimir nem serializar tokens em temporários.
 Testes: Swarm real descartável, duas instalações, repetição, backup/restauração,
 falha intermediária, proxy, health do worker, atualização e desinstalação.
-Compose/Nginx é o próximo adaptador, sem atrasar certificação do primeiro.
+Compose/Nginx foi implementado na Fase 4.2, reutilizando o núcleo do instalador.
+
+### Fase 4.2: instalador Compose/Nginx
+
+Próxima ampliação do instalador após Swarm/Traefik, antes do gate da Fase 5.
+Objetivo: atender também instalações existentes do Chatwoot em Docker Compose
+com Nginx, ampliando os públicos atendidos pelos dois adaptadores.
+
+Reutilizar os comandos install/update/uninstall/status e dry-run, o manifesto,
+o provisionamento por conta e a proteção de credenciais da Fase 4. Acrescentar
+detecção da instalação Compose, configuração de rede e encaminhamento pelo Nginx,
+sem modificar o código ou a imagem do Chatwoot.
+
+Pronto: instalação idempotente, atualização com backup e recuperação, healthchecks
+da API e do worker, diagnóstico e desinstalação preservando dados e recursos
+preexistentes. Documentar requisitos e escolha entre Swarm/Traefik e Compose/Nginx.
+Testes: ambiente Compose/Nginx real descartável, instalação repetida, integração
+autenticada, proxy, falha intermediária, backup/restauração, atualização e
+desinstalação. Declarar suporte somente aos ambientes efetivamente validados.
 
 ### Fase 5: gate e publicação 0.2.0
 
@@ -128,7 +147,7 @@ arquiteturas publicadas e carga certificada. Licença/canal privado resolvidos.
 ## Roadmap após 0.2.0
 
 1. **A1 primeiro:** card automático opt-in por funil/caixa, sem retroatividade implícita.
-2. Q5 e modelos G1; segundo adaptador Compose/Nginx.
+2. Q5 e modelos G1. O adaptador Compose/Nginx tem escopo próprio na Fase 4.2.
 3. A2 via Dashboard App, I2 API pública e I1 webhooks de saída com fila própria.
 4. G2 em demonstração isolada, I3 e exemplos externos I4.
 5. A3 somente com contrato de resolução/reabertura; A4 continua fora do núcleo.
@@ -139,12 +158,12 @@ nativo; não criar rodízio. Outros ambientes dependem de adaptadores certificad
 
 | Pendência | Fases dependentes |
 |---|---|
-| Seleção explícita de licença: MIT preservada até decisão | 5 |
+| MIT confirmada pelo mantenedor em 24/09/2026 | Resolvida |
 | Tornar GitHub público e habilitar Private Vulnerability Reporting | 5 |
-| Hardware, latências alvo e duração dos ensaios | 3, 5 |
+| Certificar implantação final; referência local da Fase 3 aprovada | 5 |
 
 Fase 1 implementada: [evidências e limites](fase-1-autorizacao.md).
-Catálogo completo, manifesto e recuperação periódica permanecem na Fase 2.
+Fase 2 concluída: [evidências e limites](fase-2-provisionamento-recuperacao.md).
 
 ## Decisões complementares — Fase 1
 
@@ -158,6 +177,41 @@ Catálogo completo, manifesto e recuperação periódica permanecem na Fase 2.
   escrita dupla; script único de migração de desenvolvimento com dry-run/relatório.
   API interna de tarefas usa descricao e vencimento a partir da Fase 1.
 - GitHub Private Vulnerability Reporting escolhido; habilitação manual pendente.
-- Licença ficou sem seleção no pedido: preservar MIT até decisão explícita.
+- Licença MIT confirmada explicitamente pelo mantenedor em 24/09/2026.
 
 As decisões acima prevalecem sobre pendências históricas e alternativas da Fase 0.
+
+Correção da validação manual da Fase 1: um contato pode ter várias negociações no
+mesmo funil, com etapas e vínculos independentes. Tarefa permanece compartilhada
+por contato/conta; ver [ADR-031](adr/031-negociacoes-multiplas-edicao.md).
+
+Fase 2 concluída em 23/09/2026: catálogo, manifesto, mapeamentos, importação
+retomável, reconciliação, limites por conta e sondas implementados. Ver
+[sessão 028](sesiones/028-2026-09-23-conclusao-fase-2.md),
+[relatório](fase-2-provisionamento-recuperacao.md) e
+[ADR-033](adr/033-catalogo-atributos.md).
+
+Fase 3 concluída na referência local aprovada: paginação, filtros, totais,
+responsável da tarefa, tempo na etapa, métricas locais e SSE. Carga de cinco
+minutos com 30 sessões mistas passou nas metas; veja [relatório e limites](fase-3-quadro-capacidade.md),
+[ADR-034](adr/034-quadro-paginado-capacidade.md) e
+[sessão 029](sesiones/029-2026-09-24-fase-3-quadro-capacidade.md).
+Capacidade da implantação final não é inferida deste ensaio ASGI/PostgreSQL.
+
+Fase 4 concluída no ambiente certificado: Swarm de nó único ARM64, Chatwoot CE
+4.18.0 e Traefik 3.7.13. Ciclo de vida, backup/restauração, duas instalações,
+revogação e preservação/purge de recursos validados. Laboratório e Docker removidos
+por solicitação do mantenedor. Ver [relatório](fase-4-instalador.md),
+[evidências](phase4-evidence.json) e
+[sessão 031](sesiones/031-2026-09-24-conclusao-fase-4.md).
+Fase 4.2 concluída no ambiente certificado: Compose local ARM64, Chatwoot CE
+4.18.0 e Nginx 1.28.3, HTTP. Instalação repetida, sessão humana no navegador,
+isolamento de conta, webhook, worker, atualização, falha/restauração e remoção
+seletiva validados. Ver [guia](fase-4.2-compose.md),
+[evidências](phase42-evidence.json) e
+[sessão 032](sesiones/032-2026-09-24-fase-4.2-compose.md).
+Próximo escopo: Fase 5; publicação continua condicionada aos seus gates.
+
+Fase 5 iniciada: [gate de publicação](fase-5-release.md) e
+[matriz de compatibilidade](compatibilidade-0.2.0.md). MIT confirmada; publicação
+continua pendente das evidências e decisões operacionais listadas no gate.

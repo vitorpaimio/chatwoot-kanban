@@ -1,57 +1,251 @@
-version: '3.8'
-x-app: &app
-  image: ${KANBAN_IMAGE}
-  environment:
-    DATABASE_URL: ${KANBAN_DATABASE_URL}
-    ENCRYPTION_KEY: ${KANBAN_ENCRYPTION_KEY}
-    CHATWOOT_BASE_URL: ${CHATWOOT_INTERNAL_URL}
-    PUBLIC_URL: https://${CHATWOOT_HOST}
-    ENV: production
-  networks: [kanban, traefik]
-services:
-  api:
-    <<: *app
-    deploy:
-      replicas: 2
-      restart_policy:
-        condition: on-failure
-      labels:
-        - traefik.enable=true
-        - traefik.http.routers.kanban.rule=Host(`${CHATWOOT_HOST}`) && (Path(`/kanban`) || PathPrefix(`/kanban/`))
-        - traefik.http.routers.kanban.priority=200
-        - traefik.http.routers.kanban.entrypoints=websecure
-        - traefik.http.routers.kanban.tls=true
-        - traefik.http.services.kanban.loadbalancer.server.port=8000
-        - traefik.docker.network=traefik
-  worker:
-    <<: *app
-    command: [python, -m, app.worker]
-    healthcheck:
-      disable: true
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: on-failure
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: kanban
-      POSTGRES_USER: kanban
-      POSTGRES_PASSWORD_FILE: /run/secrets/kanban_db_password
-    secrets: [kanban_db_password]
-    volumes: [kanban_data:/var/lib/postgresql/data]
-    networks: [kanban]
-    deploy:
-      replicas: 1
-      placement:
-        constraints: [node.labels.kanban_data == true]
-networks:
-  kanban:
-    driver: overlay
-  traefik:
-    external: true
-volumes:
-  kanban_data:
-secrets:
-  kanban_db_password:
-    external: true
+# Referência sem segredos; aplicar pelo CLI descrito em docs/fase-4-instalador.md.
+{
+  "version": "3.8",
+  "services": {
+    "postgres": {
+      "image": "postgres:16",
+      "environment": {
+        "POSTGRES_DB": "kanban",
+        "POSTGRES_USER": "kanban",
+        "POSTGRES_PASSWORD_FILE": "/run/secrets/database_password"
+      },
+      "secrets": [
+        "database_password"
+      ],
+      "networks": [
+        "private"
+      ],
+      "volumes": [
+        "data:/var/lib/postgresql/data"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "pg_isready",
+          "-U",
+          "kanban",
+          "-d",
+          "kanban"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 10
+      },
+      "deploy": {
+        "replicas": 1,
+        "labels": {
+          "io.chatwoot-kanban.installation": "exemplo-substituido-pelo-instalador"
+        },
+        "placement": {
+          "constraints": [
+            "node.role == manager"
+          ]
+        }
+      }
+    },
+    "migrate": {
+      "image": "${KANBAN_IMAGE}",
+      "entrypoint": [
+        "/bin/sh",
+        "/run/config/entrypoint.sh"
+      ],
+      "environment": {
+        "CHATWOOT_BASE_URL": "http://chatwoot_rails:3000",
+        "PUBLIC_URL": "https://chat.example.com",
+        "WEBHOOK_BASE_URL": "http://kanban_api:8000",
+        "ENV": "production"
+      },
+      "secrets": [
+        {
+          "source": "database_url",
+          "target": "database_url"
+        },
+        {
+          "source": "encryption_key",
+          "target": "encryption_key"
+        }
+      ],
+      "configs": [
+        {
+          "source": "entrypoint",
+          "target": "/run/config/entrypoint.sh"
+        }
+      ],
+      "networks": [
+        "private",
+        "public"
+      ],
+      "command": [
+        "python",
+        "-c",
+        "import os, time, psycopg\nend = time.monotonic() + 90\nwhile True:\n    try:\n        connection = psycopg.connect(os.environ['DATABASE_URL'], connect_timeout=3)\n        with connection:\n            connection.execute('SELECT 1')\n        break\n    except psycopg.OperationalError:\n        if time.monotonic() >= end:\n            raise SystemExit('Banco indispon\u00edvel para migra\u00e7\u00e3o')\n        time.sleep(2)\nos.execvp('alembic', ['alembic', 'upgrade', 'head'])\n"
+      ],
+      "healthcheck": {
+        "disable": true
+      },
+      "deploy": {
+        "replicas": 0,
+        "labels": {
+          "io.chatwoot-kanban.installation": "exemplo-substituido-pelo-instalador"
+        },
+        "restart_policy": {
+          "condition": "none"
+        }
+      }
+    },
+    "api": {
+      "image": "${KANBAN_IMAGE}",
+      "entrypoint": [
+        "/bin/sh",
+        "/run/config/entrypoint.sh"
+      ],
+      "environment": {
+        "CHATWOOT_BASE_URL": "http://chatwoot_rails:3000",
+        "PUBLIC_URL": "https://chat.example.com",
+        "WEBHOOK_BASE_URL": "http://kanban_api:8000",
+        "ENV": "production"
+      },
+      "secrets": [
+        {
+          "source": "database_url",
+          "target": "database_url"
+        },
+        {
+          "source": "encryption_key",
+          "target": "encryption_key"
+        }
+      ],
+      "configs": [
+        {
+          "source": "entrypoint",
+          "target": "/run/config/entrypoint.sh"
+        }
+      ],
+      "networks": [
+        "private",
+        "public"
+      ],
+      "command": [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--no-access-log"
+      ],
+      "deploy": {
+        "replicas": 1,
+        "labels": {
+          "io.chatwoot-kanban.installation": "exemplo-substituido-pelo-instalador",
+          "traefik.enable": "true",
+          "traefik.http.routers.kanban.rule": "Host(`chat.example.com`) && (Path(`/kanban`) || PathPrefix(`/kanban/`))",
+          "traefik.http.routers.kanban.priority": "200",
+          "traefik.http.routers.kanban.entrypoints": "websecure",
+          "traefik.http.services.kanban.loadbalancer.server.port": "8000",
+          "traefik.swarm.network": "network_public",
+          "traefik.http.routers.kanban.tls": "true"
+        }
+      }
+    },
+    "worker": {
+      "image": "${KANBAN_IMAGE}",
+      "entrypoint": [
+        "/bin/sh",
+        "/run/config/entrypoint.sh"
+      ],
+      "environment": {
+        "CHATWOOT_BASE_URL": "http://chatwoot_rails:3000",
+        "PUBLIC_URL": "https://chat.example.com",
+        "WEBHOOK_BASE_URL": "http://kanban_api:8000",
+        "ENV": "production"
+      },
+      "secrets": [
+        {
+          "source": "database_url",
+          "target": "database_url"
+        },
+        {
+          "source": "encryption_key",
+          "target": "encryption_key"
+        }
+      ],
+      "configs": [
+        {
+          "source": "entrypoint",
+          "target": "/run/config/entrypoint.sh"
+        }
+      ],
+      "networks": [
+        "private",
+        "public"
+      ],
+      "command": [
+        "python",
+        "-m",
+        "app.worker"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/bin/sh",
+          "/run/config/entrypoint.sh",
+          "python",
+          "-m",
+          "app.health",
+          "worker"
+        ],
+        "interval": "10s",
+        "timeout": "10s",
+        "start_period": "20s",
+        "retries": 3
+      },
+      "deploy": {
+        "replicas": 1,
+        "labels": {
+          "io.chatwoot-kanban.installation": "exemplo-substituido-pelo-instalador"
+        }
+      }
+    }
+  },
+  "networks": {
+    "private": {
+      "driver": "overlay"
+    },
+    "chatwoot": {
+      "external": true,
+      "name": "network_public"
+    },
+    "public": {
+      "external": true,
+      "name": "network_public"
+    }
+  },
+  "volumes": {
+    "data": {
+      "labels": {
+        "io.chatwoot-kanban.installation": "exemplo-substituido-pelo-instalador"
+      }
+    }
+  },
+  "configs": {
+    "entrypoint": {
+      "external": true,
+      "name": "kanban_entrypoint"
+    }
+  },
+  "secrets": {
+    "database_password": {
+      "external": true,
+      "name": "kanban_database_password"
+    },
+    "database_url": {
+      "external": true,
+      "name": "kanban_database_url"
+    },
+    "encryption_key": {
+      "external": true,
+      "name": "kanban_encryption_key"
+    }
+  }
+}
