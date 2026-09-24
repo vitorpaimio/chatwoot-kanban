@@ -33,6 +33,15 @@ class Deployment(BaseModel):
     tls: bool = True
     allow_local_image: bool = False
 
+    @property
+    def callback_url(self) -> str:
+        """Usa origem pública no Swarm; preserva o contrato local Compose."""
+        return (
+            self.public_url.rstrip("/")
+            if self.adapter == "swarm"
+            else f"http://{self.name}_api:8000"
+        )
+
     @model_validator(mode="after")
     def validate_contract(self) -> "Deployment":
         """Rejeita destinos ambíguos e parâmetros que poderiam conter segredos."""

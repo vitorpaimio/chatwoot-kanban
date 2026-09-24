@@ -6,7 +6,10 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
-Preparação da 0.2.0; nenhuma nova tag ou release publicada nesta etapa.
+## [0.2.0-rc.1] — 2026-09-24
+
+Versão candidata com assistente de instalação e correções de rede e webhook.
+A certificação completa da versão estável 0.2.0 permanece em andamento.
 
 ### Integração e operação
 
@@ -22,6 +25,13 @@ Preparação da 0.2.0; nenhuma nova tag ou release publicada nesta etapa.
 - Licença MIT confirmada pelo mantenedor para a 0.2.0.
 
 ### Corrigido
+
+- Instalador Swarm: seleciona a rede comprovadamente compartilhada pelo Traefik e
+  Rails, considerando a configuração do provedor e recusando estado incompatível.
+- Webhooks Swarm usam a origem pública; atualização remove apenas o webhook
+  interno legado comprovadamente criado pela instalação.
+- Instalação e status verificam o loader pela URL pública. O loader é registrado
+  depois dessa validação e usa `async` para não bloquear DOMContentLoaded.
 
 - Instalador Swarm: encontra o PostgreSQL também quando o alias de rede está
   declarado só no serviço (`docker service inspect`), não no container.

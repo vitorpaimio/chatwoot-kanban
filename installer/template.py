@@ -38,7 +38,7 @@ def stack(config: Deployment, identity: str, image: str, running: bool = False) 
         "environment": {
             "CHATWOOT_BASE_URL": config.chatwoot_url.rstrip("/"),
             "PUBLIC_URL": config.public_url.rstrip("/"),
-            "WEBHOOK_BASE_URL": f"http://{name}_api:8000",
+            "WEBHOOK_BASE_URL": config.callback_url,
             "ENV": "production",
         },
         "secrets": [
