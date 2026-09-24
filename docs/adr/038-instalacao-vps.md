@@ -23,6 +23,19 @@ Não instala um Chatwoot novo, não altera seu código nem adota bancos externos
 Swarm reutiliza labels Traefik do Rails. Compose mantém o contrato do gateway HTTP
 próprio, com uma pergunta de URL, sem reconfigurar Nginx/TLS preexistentes.
 
+No Swarm, a descoberta inclui aliases de `TaskTemplate.Networks` do serviço,
+restritos ao ID da rede compartilhada com Rails. Isso cobre PostgreSQL em outra
+stack cujo alias não aparece no inspect do container. Com `config.force_ssl`
+ativo, `chatwoot_url` usa `FRONTEND_URL`, obrigatoriamente HTTPS; uma origem HTTP
+interrompe a descoberta antes de criar recursos. Sem SSL forçado, a URL interna
+permanece. O adaptador Compose não muda.
+
+O caminho HTTPS depende de DNS, certificado e acesso ao proxy/CDN público a partir
+dos containers. WAF, Access e limites de requisições precisam permitir a API do
+Chatwoot; o instalador não contorna nem altera essas regras. Instalações já
+persistidas não são redescobertas automaticamente. A recuperação de uma tentativa
+falha está descrita no [guia avançado](../instalacao-avancada.md#recuperar-falha-de-ssl-no-swarm).
+
 Estado e trava duráveis permitem repetição/update/status/uninstall. Nenhum token é
 pedido ao operador. O shell não baixa Python nem altera pacotes do host.
 A CI publica o candidato por SHA e só promove a tag do instalador após ensaio

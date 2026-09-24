@@ -206,6 +206,11 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
         raise InspectionError("FRONTEND_URL ausente no Chatwoot.")
     chatwoot_url = f"http://{internal_host}:3000"
     if adapter == "swarm" and inventory.get("force_ssl"):
+        if urlsplit(url).scheme != "https":
+            raise InspectionError(
+                "FORCE_SSL exige FRONTEND_URL HTTPS no Chatwoot. "
+                "Corrija a origem antes de instalar."
+            )
         # Com FORCE_SSL o Rails responde 301 a chamadas HTTP diretas, que não passam
         # pelo proxy que envia X-Forwarded-Proto; usa a origem pública HTTPS.
         chatwoot_url = url

@@ -11,7 +11,13 @@ from installer.swarm import InspectionError
 IMAGE = "ghcr.io/vitorpaimio/chatwoot-kanban@sha256:" + "a" * 64
 
 
-def fixture(adapter="swarm", accounts=None, force_ssl=False, db_service_net=None):
+def fixture(
+    adapter="swarm",
+    accounts=None,
+    force_ssl=False,
+    db_service_net=None,
+    frontend_url="https://chat.example.com",
+):
     def container(name, command, service, alias):
         labels = (
             {"com.docker.swarm.service.name": service}
@@ -43,7 +49,7 @@ def fixture(adapter="swarm", accounts=None, force_ssl=False, db_service_net=None
     worker = container("worker-id", ["bundle", "exec", "sidekiq"], "worker", "worker")
     inventory = {
         "accounts": accounts or [[1, "Principal"]],
-        "url": "https://chat.example.com",
+        "url": frontend_url,
         "force_ssl": force_ssl,
         "database": {
             "host": "postgres",
@@ -136,6 +142,13 @@ def test_swarm_keeps_internal_url_without_force_ssl(monkeypatch):
     monkeypatch.setattr(q, "docker", docker)
     config = q.discover(q.parser().parse_args(["--yes"]), IMAGE)
     assert config.chatwoot_url == "http://cw_rails:3000"
+
+
+def test_swarm_rejects_http_frontend_when_rails_forces_ssl(monkeypatch):
+    docker, _, _ = fixture(force_ssl=True, frontend_url="http://chat.example.com")
+    monkeypatch.setattr(q, "docker", docker)
+    with pytest.raises(InspectionError, match="FORCE_SSL exige FRONTEND_URL HTTPS"):
+        q.discover(q.parser().parse_args(["--yes"]), IMAGE)
 
 
 def test_compose_keeps_internal_url_even_with_force_ssl(monkeypatch):
