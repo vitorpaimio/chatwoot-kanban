@@ -190,7 +190,14 @@ async def board(
     limit: int = Query(default=50, ge=1, le=100),
 ):
     async with connection(user) as conn:
-        return await board_page(
+        if funnel_id is None and stage_id is None and contact_id is None:
+            # Sem funil escolhido, abre o principal numa única consulta paginada.
+            funnel_id = await conn.fetchval(
+                """SELECT id FROM kb_funnels WHERE account_id=$1 AND NOT archived
+                ORDER BY is_primary DESC,position,id LIMIT 1""",
+                user["account"],
+            )
+        page = await board_page(
             conn,
             user["account"],
             funnel_id,
@@ -203,6 +210,7 @@ async def board(
             offset,
             limit,
         )
+    return {**page, "funnel_id": funnel_id}
 
 
 async def automation_stage(conn, account, funnel_id, body: FunnelSettings):

@@ -384,6 +384,18 @@ async def test_real_auth_contract(db, monkeypatch):
         await identity(req(2, headers))
     assert error.value.status_code == 403
     response_status = 401
+    # Sessão válida fica em cache pelo prazo configurado; depois é revalidada.
+    assert (await identity(req(headers=headers)))["account"] == 1
+    security._profile_cache.clear()
+    with pytest.raises(HTTPException) as error:
+        await identity(req(headers=headers))
+    assert error.value.status_code == 401
+    response_status = 200
+    assert (await identity(req(headers=headers)))["account"] == 1
+    monkeypatch.setattr(security.settings, "session_cache_seconds", 0)
+    security._profile_cache.clear()
+    await identity(req(headers=headers))
+    response_status = 401
     with pytest.raises(HTTPException) as error:
         await identity(req(headers=headers))
     assert error.value.status_code == 401

@@ -280,9 +280,14 @@ async def refresh_contact(conn, cw, contact_id, project_cards=True, apply_remote
     contact = data.get("payload", data)
     conversations = await cw.request("GET", f"/contacts/{contact_id}/conversations")
     conversations = conversations.get("payload", [])
+    # Conversa aberta vence a resolvida: o responsável do card é quem atende agora.
     recent = max(
         conversations,
-        key=lambda c: (c.get("last_activity_at", 0) or 0, c["id"]),
+        key=lambda c: (
+            c.get("status") in ("open", "pending"),
+            c.get("last_activity_at", 0) or 0,
+            c["id"],
+        ),
         default={},
     )
     assignee = recent.get("meta", {}).get("assignee") or {}

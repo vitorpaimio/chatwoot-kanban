@@ -13,6 +13,8 @@
     },
   ];
   let overlay, frame, currentAccount, sidebar, selectedPage, templates;
+  // Painel escondido da última página: reabrir não recarrega o quadro do zero.
+  let parked = null;
   let menu,
     collapsed,
     flyout = false;
@@ -86,8 +88,22 @@
       temporarily(node, "class", [...new Set(classes)].join(" "));
     }
   };
+  const visibility = (target, visible) =>
+    target?.contentWindow?.postMessage(
+      { event: "kanban:visibility", visible },
+      location.origin,
+    );
+  const discard = () => {
+    parked?.overlay.remove();
+    parked = null;
+  };
   const close = () => {
-    overlay?.remove();
+    if (overlay && frame) {
+      discard();
+      overlay.style.display = "none";
+      visibility(frame, false);
+      parked = { overlay, frame, key: selectedPage, account: currentAccount };
+    }
     overlay = frame = selectedPage = null;
     restore();
     renderState();
@@ -116,6 +132,22 @@
     if (!currentAccount) return;
     selectedPage = page.key;
     flyout = false;
+    if (
+      !cardId &&
+      parked?.key === page.key &&
+      parked.account === currentAccount &&
+      parked.overlay.isConnected
+    ) {
+      ({ overlay, frame } = parked);
+      parked = null;
+      overlay.style.display = "";
+      visibility(frame, true);
+      renderState();
+      suppressNative();
+      layout();
+      return;
+    }
+    discard();
     overlay = document.createElement("section");
     overlay.id = "chatwoot-kanban-panel";
     Object.assign(overlay.style, {
@@ -299,6 +331,7 @@
   const install = () => {
     const selected = account();
     if (overlay && selected !== currentAccount) close();
+    if (parked && parked.account !== selected) discard();
     if (!selected) {
       menu?.remove();
       menu = null;

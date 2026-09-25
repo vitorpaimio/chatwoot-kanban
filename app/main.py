@@ -1,9 +1,10 @@
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import asyncpg
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.database import close_pool, init_pool
@@ -15,6 +16,23 @@ from app.routers.workspace import router
 from app.security import cipher
 
 ROOT = Path(__file__).parent
+ASSET = re.compile(r'"/kanban/static/([\w./-]+)"')
+
+
+def page(name: str) -> HTMLResponse:
+    """Serve a página com a versão de cada arquivo estático na URL.
+
+    A versão muda quando o arquivo muda, o que permite ao navegador guardar
+    JS, CSS e Chart.js sem revalidar a cada abertura do quadro.
+    """
+
+    def stamp(match: re.Match) -> str:
+        asset = match.group(1)
+        stat = (ROOT / "static" / asset).stat()
+        return f'"/kanban/static/{asset}?v={stat.st_mtime_ns:x}{stat.st_size:x}"'
+
+    html = (ROOT / "templates" / name).read_text()
+    return HTMLResponse(ASSET.sub(stamp, html))
 
 
 @asynccontextmanager
@@ -46,7 +64,14 @@ async def security_headers(request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    response.headers["Cache-Control"] = "no-store"
+    path = request.url.path
+    if path.startswith("/kanban/static/") and request.query_params.get("v"):
+        cache = "public, max-age=31536000, immutable"
+    elif path.startswith("/kanban/static/") or path == "/kanban/loader.js":
+        cache = "no-cache"
+    else:
+        cache = "no-store"
+    response.headers["Cache-Control"] = cache
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; frame-ancestors 'self'; style-src 'self' '"
         "unsafe-inline'; img-src 'self' data: https:; connect-src 'self"
@@ -58,12 +83,12 @@ async def security_headers(request, call_next):
 @app.get("/kanban/")
 @app.get("/kanban")
 async def interface():
-    return FileResponse(ROOT / "templates" / "kanban.html")
+    return page("kanban.html")
 
 
 @app.get("/kanban/metricas")
 async def metrics_interface():
-    return FileResponse(ROOT / "templates" / "metricas.html")
+    return page("metricas.html")
 
 
 @app.get("/kanban/loader.js")

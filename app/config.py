@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     env: str = "development"
     webhook_tolerance: int = 300
     session_recheck_seconds: int = 30
+    session_cache_seconds: int = 30
 
 
 settings = Settings()
