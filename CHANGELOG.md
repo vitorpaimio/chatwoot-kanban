@@ -6,6 +6,10 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+## [0.2.0-rc.4] — 2026-09-25
+
+Versão candidata com a interface do Pipeline alinhada ao Chatwoot 4.18.
+
 ### Alterado
 
 - O quadro fica oculto até a conta estar pronta; um painel único conduz a
