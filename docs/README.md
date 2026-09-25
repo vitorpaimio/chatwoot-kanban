@@ -7,6 +7,7 @@
 - [Fase 0: contratos, evidências e decisões pendentes](fase-0-contratos-0.2.0.md)
 
 - [Auditoria técnica de 23/09/2026](auditoria-2026-09-23.md)
+- [Auditoria de UX do Pipeline de 25/09/2026](auditoria-ux-2026-09-25.md)
 - [Guia inicial](../README.md)
 - [Guia de métricas](metricas.md)
 - [Convenções](format/README.md)
