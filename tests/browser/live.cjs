@@ -118,8 +118,12 @@ async function eventually(fn) {
   }).format(new Date());
   await fa.getByLabel("Vencimento — horário de Brasília").fill(today);
   await fa.getByRole("button", { name: "Salvar", exact: true }).click();
-  await cardB().getByText("Retornar proposta", { exact: false }).waitFor();
-  assert.match(await cardB().textContent(), /Vence hoje/);
+  // A tarefa aparece no cartão só como indicador; o texto fica na negociação.
+  await cardB().locator(".task-flag.today").waitFor();
+  assert.match(
+    await cardB().locator(".task-flag").getAttribute("title"),
+    /Vence hoje/,
+  );
   await cardB()
     .getByRole("button", { name: "Editar tarefa", exact: true })
     .click();
@@ -146,7 +150,6 @@ async function eventually(fn) {
       String(won.id),
   );
   console.log("OK SSE entre sessões, rascunho preservado e movimentação");
-  await fa.getByRole("button", { name: "Gerenciar funis" }).click();
   await fa.getByRole("button", { name: "Novo funil", exact: true }).click();
   const funnelName = "Renovação teste " + stamp;
   await fa.getByLabel("Nome do funil").fill(funnelName);
@@ -164,7 +167,8 @@ async function eventually(fn) {
   await fa
     .getByRole("button", { name: "Criar negociação", exact: true })
     .click();
-  await cardA().getByText("Retornar proposta", { exact: false }).waitFor();
+  // Tarefa compartilhada: o cartão do novo funil já traz o indicador.
+  await cardA().locator(".task-flag").waitFor();
   await cardA()
     .getByRole("button", { name: "Editar tarefa", exact: true })
     .click();
@@ -188,9 +192,14 @@ async function eventually(fn) {
     .fill('<img src=x onerror="window.__xss=1">');
   await fa.getByLabel("Vencimento — horário de Brasília").fill(today);
   await fa.getByRole("button", { name: "Salvar", exact: true }).click();
-  await cardA()
-    .getByText('<img src=x onerror="window.__xss=1">', { exact: false })
+  // O texto da tarefa aparece como texto na janela da negociação.
+  await cardA().locator(".task-flag").waitFor();
+  await cardA().locator(".card-name").click();
+  await fa
+    .locator(".detail-task-text")
+    .getByText('<img src=x onerror="window.__xss=1">', { exact: true })
     .waitFor();
+  await fa.locator("#dialog-close").click();
   assert.equal(
     await a
       .frames()

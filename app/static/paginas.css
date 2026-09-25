@@ -1,0 +1,445 @@
+/* Páginas Tarefas e Configurações (ADR-045): layout das Configurações do
+   Chatwoot 4.18 (max-w-5xl, px-6), tabela como BaseTable, abas como TabBar e
+   cartões como CardLayout. Cores e fonte vêm de theme.js/kanban.css. */
+.page-content {
+  max-width: 1024px;
+  margin: 0 auto;
+  padding: 24px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.page-description,
+.page-status {
+  margin: 0;
+  max-width: 768px;
+  line-height: 21px;
+  color: var(--muted);
+}
+.page-status:empty {
+  display: none;
+}
+.muted {
+  color: var(--muted);
+}
+
+/* TabBar */
+.tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  flex-wrap: wrap;
+  border-radius: 8px;
+  background: rgba(var(--alpha-1));
+}
+body.dark .tabs {
+  background: rgb(var(--solid-1));
+}
+.tabs button {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-weight: 400;
+  color: rgb(var(--slate-10));
+}
+.tabs button:hover {
+  background: transparent;
+  color: rgb(var(--blue-9));
+}
+.tabs button[aria-selected="true"] {
+  background: rgb(var(--solid-active));
+  color: rgb(var(--blue-11));
+  outline: 1px solid rgba(var(--border-container));
+  outline-offset: -1px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+.tabs button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* BaseTable */
+.list-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.list-table th {
+  padding: 16px 16px 16px 0;
+  text-align: left;
+  font-weight: 500;
+  line-height: 21px;
+  border-bottom: 1px solid var(--line);
+}
+.list-table td {
+  padding: 12px 16px 12px 0;
+  vertical-align: top;
+  line-height: 21px;
+  border-bottom: 1px solid var(--line);
+}
+.list-table :is(th, td):first-child {
+  padding-left: 12px;
+}
+.task-row {
+  cursor: pointer;
+}
+.task-row:hover td {
+  background: rgba(var(--alpha-1));
+}
+.task-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.task-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.deal-name {
+  display: block;
+  font-weight: 500;
+}
+.deal-stage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.due {
+  display: block;
+  white-space: nowrap;
+}
+.due-label {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+:is(.due, .due-label).overdue {
+  color: rgb(var(--ruby-11));
+}
+:is(.due, .due-label).today {
+  color: rgb(var(--amber-11));
+}
+#more {
+  align-self: center;
+}
+@media (max-width: 640px) {
+  .list-table :is(th, td):nth-child(4) {
+    display: none;
+  }
+}
+
+/* Configurações: cartões (CardLayout), campos (Input/Select), confirmação
+   (Dialog type="alert") e aviso de sucesso (Snackbar) do Chatwoot 4.18. */
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.settings[hidden] {
+  display: none;
+}
+.page-card {
+  padding: 20px 24px;
+  background: rgb(var(--solid-2));
+  outline: 1px solid rgba(var(--border-container));
+  outline-offset: -1px;
+  border-radius: 12px;
+}
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+.settings-card h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  letter-spacing: -0.27px;
+}
+.card-description {
+  margin: -8px 0 0;
+  max-width: 768px;
+  line-height: 21px;
+  color: var(--muted);
+}
+.card-description code,
+.resource-list code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(var(--alpha-2));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+.settings-field {
+  max-width: 480px;
+  gap: 4px;
+  font-size: 14px;
+  color: rgb(var(--slate-12));
+}
+.settings-field :is(input, select, textarea) {
+  width: 100%;
+  font-weight: 400;
+  background: rgba(var(--black-alpha-2));
+}
+.settings-field :is(input, select) {
+  height: 40px;
+  padding: 0 12px;
+}
+.settings-field textarea {
+  min-height: 120px;
+  padding: 10px 12px;
+  line-height: 21px;
+  resize: vertical;
+}
+.settings-field select {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b8d98' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+}
+.settings-field :is(input, select, textarea):hover:not(:disabled) {
+  border-color: rgb(var(--slate-6));
+}
+.settings-card .field-error {
+  margin: 0;
+}
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.settings-actions:empty {
+  display: none;
+}
+.settings-actions button {
+  height: 40px;
+  padding: 0 16px;
+}
+.inline-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.inline-form .settings-field {
+  width: 200px;
+}
+.inline-form button {
+  height: 40px;
+}
+.import-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.import-form[hidden] {
+  display: none;
+}
+.import-form fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.import-form legend {
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+.choice {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 400;
+  color: rgb(var(--slate-12));
+}
+.choice input {
+  margin: 0;
+  accent-color: rgb(var(--blue-9));
+}
+.import-target {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.import-target[hidden] {
+  display: none;
+}
+.import-target .settings-field {
+  flex: 1;
+  min-width: 200px;
+}
+#import-state {
+  margin: 0;
+}
+.state-list {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 24px;
+  margin: 0;
+  align-items: center;
+}
+.state-list dt {
+  color: var(--muted);
+}
+.state-list dd {
+  margin: 0;
+}
+.state-error {
+  margin: 0;
+  color: rgb(var(--ruby-11));
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  background: rgba(var(--alpha-2));
+  font-size: 12px;
+  font-weight: 500;
+}
+.badge.ok {
+  color: rgb(var(--teal-11));
+}
+.badge.wait {
+  color: rgb(var(--amber-11));
+}
+.badge.error {
+  color: rgb(var(--ruby-11));
+}
+.danger-outline {
+  color: rgb(var(--ruby-11));
+  border-color: rgb(var(--ruby-8));
+  background: transparent;
+}
+.danger-outline:hover {
+  background: rgb(var(--ruby-9) / 0.1);
+}
+#technical > summary {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+}
+#technical > summary::-webkit-details-marker {
+  display: none;
+}
+#technical > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border: solid var(--muted);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+#technical[open] > summary::after {
+  transform: rotate(-135deg);
+}
+#technical:not([open]) {
+  gap: 0;
+}
+.resource-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.resource-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.resource-type {
+  font-weight: 500;
+}
+.gate-action {
+  align-self: flex-start;
+  height: 40px;
+  padding: 0 16px;
+}
+.confirm-dialog {
+  width: min(512px, 94vw);
+  padding: 24px;
+  border: 0;
+  outline: 1px solid rgba(var(--border-container));
+  background: rgba(var(--alpha-3));
+  backdrop-filter: blur(100px);
+  box-shadow:
+    0 20px 25px -5px rgb(0 0 0 / 0.1),
+    0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+.confirm-dialog::backdrop {
+  background: rgba(var(--black-alpha-1));
+  backdrop-filter: blur(4px);
+}
+.confirm-dialog h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+}
+.confirm-dialog p {
+  margin: 0 0 24px;
+  color: var(--muted);
+  line-height: 21px;
+}
+.confirm-actions {
+  display: flex;
+  gap: 12px;
+}
+.confirm-actions button {
+  flex: 1;
+  height: 40px;
+}
+.confirm-actions .danger {
+  color: #fff;
+  background: rgb(var(--ruby-9));
+  border-color: rgb(var(--ruby-9));
+}
+.confirm-actions .danger:hover {
+  background: rgb(var(--ruby-10));
+}
+.toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  z-index: 50;
+  transform: translateX(-50%);
+  max-width: min(400px, 90vw);
+  min-width: 240px;
+  padding: 12px 24px;
+  border-radius: 8px;
+  background: rgb(var(--slate-12));
+  color: rgb(var(--slate-1));
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+body.dark .toast {
+  background: rgb(var(--slate-7));
+  color: rgb(var(--slate-12));
+}
+@media (max-width: 640px) {
+  .inline-form {
+    flex-wrap: wrap;
+  }
+}

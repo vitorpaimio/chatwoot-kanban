@@ -11,6 +11,7 @@ from app.database import close_pool, init_pool
 from app.events import hub
 from app.health import health_status
 from app.routers.metrics import router as metrics_router
+from app.routers.pages import router as pages_router
 from app.routers.provisioning import router as provisioning_router
 from app.routers.workspace import router
 from app.security import cipher
@@ -56,6 +57,7 @@ app = FastAPI(
 app.include_router(router)
 app.include_router(provisioning_router)
 app.include_router(metrics_router)
+app.include_router(pages_router)
 app.mount("/kanban/static", StaticFiles(directory=ROOT / "static"), name="static")
 
 
@@ -89,6 +91,16 @@ async def interface():
 @app.get("/kanban/metricas")
 async def metrics_interface():
     return page("metricas.html")
+
+
+@app.get("/kanban/tarefas")
+async def tasks_interface():
+    return page("tarefas.html")
+
+
+@app.get("/kanban/configuracoes")
+async def settings_interface():
+    return page("configuracoes.html")
 
 
 @app.get("/kanban/loader.js")

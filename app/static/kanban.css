@@ -109,11 +109,26 @@ body > header {
   pointer-events: none;
   color: var(--muted);
 }
+.status-link {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+.status-link.clickable {
+  cursor: pointer;
+}
+.status-link:not(.clickable):hover {
+  background: transparent;
+}
 .connection {
   width: 8px;
   height: 8px;
+  flex-shrink: 0;
   border-radius: 50%;
-  margin-left: auto;
   background: rgb(var(--amber-9));
 }
 .connection[data-state="ready"] {
@@ -135,10 +150,131 @@ body > header {
   color: var(--muted);
   background: rgb(var(--surface-1));
 }
+/* Filtros: gatilho como o Select e menu como o DropdownMenu do Chatwoot 4.18. */
+.filter {
+  position: relative;
+  flex-shrink: 0;
+}
+.filter select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+.filter-trigger {
+  height: 32px;
+  max-width: 200px;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  font-weight: 400;
+  color: var(--muted);
+  background: rgb(var(--surface-1));
+}
+.filter-trigger:hover {
+  border-color: rgb(var(--slate-6));
+  background: rgb(var(--surface-1));
+}
+.filter.active .filter-trigger {
+  color: rgb(var(--blue-11));
+  background: rgb(var(--blue-9) / 0.1);
+  border-color: transparent;
+}
+.filter-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.filter-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: max(100%, 208px);
+  max-width: 280px;
+  padding: 4px;
+  background: rgba(var(--alpha-3));
+  backdrop-filter: blur(100px);
+  outline: 1px solid rgba(var(--border-container));
+  border-radius: 12px;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+.filter-menu input {
+  width: 100%;
+  height: 32px;
+  margin-bottom: 4px;
+  background: rgba(var(--black-alpha-2));
+}
+.filter-options {
+  max-height: 280px;
+  overflow-y: auto;
+}
+.filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-weight: 420;
+  color: rgb(var(--slate-12));
+  cursor: pointer;
+  outline: none;
+}
+.filter-option:hover,
+.filter-option:focus {
+  background: rgba(var(--alpha-1));
+}
+.filter-option[aria-selected="true"] {
+  background: rgba(var(--alpha-1));
+}
+body.dark .filter-option:hover,
+body.dark .filter-option:focus {
+  background: rgba(var(--alpha-2));
+}
+body.dark .filter-option[aria-selected="true"] {
+  background: rgb(var(--solid-active));
+}
+.filter-option:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.filter-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.filter-option .label-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--label-color, rgb(var(--slate-9)));
+}
+.filter-option .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+.filter-empty {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--muted);
+}
+/* Busca com largura fixa, como em Contatos e Configurações do Chatwoot 4.18. */
 .search {
   position: relative;
+  flex: 0 1 240px;
+  min-width: 160px;
+}
+.toolbar-spacer {
   flex: 1;
-  min-width: 150px;
+}
+.toolbar .header-separator {
+  margin: 0 4px;
 }
 .search .icon {
   position: absolute;
@@ -153,7 +289,6 @@ body > header {
   padding-left: 34px;
   background: rgba(var(--alpha-2));
   border-color: transparent;
-  font-size: 13px;
 }
 .more-actions {
   position: relative;
@@ -240,6 +375,42 @@ body > header {
   padding: 2px 3px 12px;
   font-size: 13px;
   font-weight: 500;
+}
+/* Página do quadro com altura fixa: cabeçalho, barra e resumo não rolam; o
+   quadro rola na horizontal e cada coluna na vertical, com a etapa visível. */
+body.board-page:not(.setup-mode) {
+  height: 100vh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+body.board-page:not(.setup-mode) > * {
+  flex-shrink: 0;
+}
+body.board-page #board {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto hidden;
+}
+body.board-page .column {
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-top: 0;
+}
+/* Barra fina como a do Chatwoot, sem as setas da barra nativa do Windows. */
+body.board-page :is(#board, .column) {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--slate-6)) transparent;
+}
+body.board-page .column-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding-top: 12px;
+  background: inherit;
 }
 .column-head > span:nth-child(2) {
   overflow: hidden;
@@ -403,31 +574,49 @@ body > header {
 .tag.more {
   color: var(--muted);
 }
-.task {
+/* Indicador de tarefa no cartão; os dados ficam na janela da negociação. */
+.task-flag {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: rgb(var(--slate-10));
+}
+.task-flag.overdue {
+  color: rgb(var(--ruby-11));
+}
+.task-flag.today {
+  color: rgb(var(--amber-11));
+}
+.detail-task {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  background: rgba(var(--alpha-1));
+}
+.detail-task p {
+  margin: 0;
+}
+.detail-task-head {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
+  font-weight: 500;
+}
+.detail-task-due {
+  margin-left: auto;
   font-size: 12px;
+  font-weight: 400;
   color: var(--muted);
 }
-.task-message {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.task time {
-  flex-shrink: 0;
-  font-size: 11px;
-}
-.task.overdue time {
+.detail-task.overdue .detail-task-due {
   color: rgb(var(--ruby-11));
 }
-.task.today time {
+.detail-task.today .detail-task-due {
   color: rgb(var(--amber-11));
+}
+.detail-task-text {
+  overflow-wrap: anywhere;
 }
 .card-bottom {
   display: flex;
@@ -444,7 +633,8 @@ body > header {
 .card-bottom > .avatar {
   margin-left: auto;
 }
-.last-activity + .avatar {
+.last-activity + .avatar,
+.task-flag + .avatar {
   margin-left: 0;
 }
 .last-activity {
@@ -486,19 +676,101 @@ body > header {
   color: rgb(var(--amber-11));
   border-radius: 8px;
 }
-#activation {
-  margin: 24px;
-  padding: 20px;
-  background: var(--panel);
-  border: 1px solid var(--line);
+/* Ativação: quadro oculto até a conta ficar pronta (ADR-043). Cartão, campo e
+   ajuda seguem Dialog, Input e text-label-small do Chatwoot 4.18. */
+body.setup-mode :is(.toolbar, .board-status, #board, #status-link) {
+  display: none;
+}
+.setup {
+  display: flex;
+  justify-content: center;
+  padding: 56px 24px;
+}
+.setup-card {
+  width: min(100%, 512px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 24px;
+  background: rgb(var(--solid-2));
+  outline: 1px solid rgba(var(--border-container));
+  outline-offset: -1px;
   border-radius: 12px;
+}
+.setup-card h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 520;
+  letter-spacing: -0.27px;
+}
+#setup-text {
+  margin: 0;
+  line-height: 21px;
+  color: var(--muted);
+}
+.spinner {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 #activate-form {
   display: flex;
-  gap: 12px;
-  align-items: end;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
 }
 #activate-form label {
+  display: block;
+  line-height: 21px;
+  font-size: 14px;
+  color: rgb(var(--slate-12));
+}
+#activate-form input {
+  height: 40px;
+  padding: 0 12px;
+  background: rgba(var(--black-alpha-2));
+}
+#activate-form input:hover {
+  border-color: rgb(var(--slate-6));
+}
+#activate-form input[aria-invalid="true"] {
+  border-color: rgb(var(--ruby-8));
+}
+.field-help,
+.field-error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+.field-help {
+  color: var(--muted);
+}
+.field-error {
+  color: rgb(var(--ruby-11));
+}
+#activate-submit,
+.setup-actions button {
+  height: 40px;
+}
+#activate-submit {
+  margin-top: 12px;
+}
+.setup-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+.setup-actions button {
   flex: 1;
 }
 label {
@@ -983,6 +1255,10 @@ dialog.stage-dialog {
   .card-landed {
     animation: none;
   }
+  /* O giro lento ainda indica progresso; o texto ao lado também. */
+  .spinner {
+    animation-duration: 3s;
+  }
 }
 
 .card-actions {
@@ -1039,11 +1315,6 @@ dialog.stage-dialog {
   gap: 6px;
   padding: 10px 4px;
   font-size: 12px;
-}
-.task-owner {
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Gerenciar funil */
@@ -1295,23 +1566,41 @@ button:disabled.icon-button {
     flex-direction: column;
   }
 }
-#manage {
-  border-radius: 8px;
+/* Ações do funil à direita do cabeçalho, como no ContactHeader do Chatwoot 4.18:
+   botões sm (ghost e faded slate) e separador w-px h-4 n-strong. */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
 }
-#manage:hover {
+.header-actions[hidden] {
+  display: none;
+}
+.header-button {
+  height: 32px;
+  padding: 0 12px;
+  gap: 6px;
+  border-color: transparent;
   color: rgb(var(--slate-12));
-  background: rgba(var(--alpha-2));
 }
-#manage .icon {
-  width: 18px;
-  height: 18px;
-  transition: transform 0.3s ease;
+.header-button.ghost {
+  background: transparent;
 }
-#manage:hover .icon {
-  transform: rotate(45deg);
+.header-button.faded {
+  background: rgb(var(--slate-9) / 0.1);
 }
-@media (prefers-reduced-motion: reduce) {
-  #manage .icon {
-    transition: none;
-  }
+.header-button.faded:hover {
+  background: rgb(var(--slate-9) / 0.2);
+}
+.header-separator {
+  width: 1px;
+  height: 16px;
+  background: rgb(var(--border-strong));
+}
+.header-actions .more-actions summary {
+  color: rgb(var(--slate-12));
+}
+.action-menu .danger-item {
+  color: rgb(var(--ruby-11));
 }

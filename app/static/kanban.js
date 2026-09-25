@@ -32,6 +32,10 @@ function rememberFunnel(id) {
     /* Armazenamento pode estar desabilitado. */
   }
 }
+const { filterMenu } = window.PipelineUI;
+// Abre outra página do Pipeline no mesmo painel (o loader valida a página).
+const openPage = (page) =>
+  parent.postMessage({ event: "kanban:open-page", account, page }, location.origin);
 const el = (tag, text, cls) => {
   const n = document.createElement(tag);
   if (text != null) n.textContent = String(text);
@@ -251,6 +255,10 @@ function connectionStatus(text, state) {
   $("connection").title = text;
   $("connection").setAttribute("aria-label", text);
   $("connection").dataset.state = state;
+  const link = $("status-link");
+  const label = link.classList.contains("clickable") ? `${text} · Abrir configurações` : text;
+  link.title = label;
+  link.setAttribute("aria-label", label);
 }
 const button = (text, fn) => {
   const b = el("button", text);
@@ -638,6 +646,22 @@ function stageField(stages, value) {
   wrapper.append(caption, root);
   return [wrapper, state];
 }
+// Tarefa da negociação: aparece ao abrir o cartão, não no cartão do quadro.
+function taskSummary(card) {
+  if (!card.task_id) return [];
+  const state = ["overdue", "today"].includes(card.due_state) ? card.due_state : "active";
+  const box = el("section", null, `detail-task ${state}`);
+  box.setAttribute("aria-label", "Tarefa");
+  const head = el("div", null, "detail-task-head");
+  head.append(icon("task"), el("span", "Tarefa", "detail-task-title"));
+  const due = el("time", `${DUE_LABEL[state]} · ${dateBR(card.due_date)}`, "detail-task-due");
+  due.dateTime = card.due_date;
+  head.append(due);
+  box.append(head, el("p", card.message, "detail-task-text"));
+  if (card.task_assignee_name)
+    box.append(el("p", `Responsável da tarefa: ${card.task_assignee_name}`, "muted"));
+  return [box];
+}
 function details(card) {
   editingCardId = card.id;
   const [stage, s] = stageField(
@@ -666,9 +690,13 @@ function details(card) {
     ),
     stage,
     value,
+    ...taskSummary(card),
     el(
       "p",
-      `Responsável: ${card.assignee_name || "Não atribuído"} · Sincronização: ${syncLabel(card.sync_status)}`,
+      `Responsável: ${card.assignee_name || "Não atribuído"}` +
+        (card.sync_status && card.sync_status !== "synced"
+          ? ` · ${syncLabel(card.sync_status)}`
+          : ""),
       "muted",
     ),
     actions,
@@ -703,6 +731,7 @@ function details(card) {
   remove.append(icon("trash"));
   $("dialog-close").before(remove);
 }
+const DUE_LABEL = { overdue: "Vencida", today: "Vence hoje", active: "Agendada" };
 const syncLabel = (status) =>
   ({
     synced: "Sincronizado",
@@ -830,45 +859,34 @@ function render() {
         alert.append(icon("alert"));
         bottom.append(alert);
       }
-      if (card.last_activity_at) {
-        const time = el(
-          "time",
-          relativeTime(card.last_activity_at),
-          "last-activity",
-        );
-        time.dateTime = card.last_activity_at;
-        time.dataset.activityAt = card.last_activity_at;
-        time.title = new Date(card.last_activity_at).toLocaleString("pt-BR");
+      // Uma única marcação de tempo cabe na largura da coluna; o tempo na etapa
+      // fica na dica (antes era um segundo texto que estourava o cartão).
+      if (card.last_activity_at || card.stage_entered_at) {
+        const since = card.last_activity_at || card.stage_entered_at;
+        const time = el("time", relativeTime(since), "last-activity");
+        time.dateTime = since;
+        if (card.last_activity_at) time.dataset.activityAt = card.last_activity_at;
+        time.title = [
+          card.last_activity_at &&
+            `Última atividade: ${new Date(card.last_activity_at).toLocaleString("pt-BR")}`,
+          card.stage_entered_at &&
+            `Na etapa ${relativeTime(card.stage_entered_at)} (desde ${new Date(card.stage_entered_at).toLocaleString("pt-BR")})`,
+        ].filter(Boolean).join(" · ");
         bottom.append(time);
       }
-      if (card.stage_entered_at) {
-        const duration = el("span", `Na etapa ${relativeTime(card.stage_entered_at)}`, "last-activity");
-        duration.title = `Entrada na etapa: ${new Date(card.stage_entered_at).toLocaleString("pt-BR")}`;
-        bottom.append(duration);
+      if (card.task_id) {
+        const state = ["overdue", "today"].includes(card.due_state) ? card.due_state : "active";
+        const flag = el("span", null, `task-flag ${state}`);
+        flag.title = `${DUE_LABEL[state]} · ${dateBR(card.due_date)}`;
+        flag.setAttribute("aria-label", `Tarefa: ${flag.title}`);
+        flag.append(icon("task"));
+        bottom.append(flag);
       }
       const agent = metadata.agents.get(card.assignee_id);
       bottom.append(
         avatar(card.assignee_name, agent?.thumbnail || agent?.avatar_url, true),
       );
       item.append(bottom);
-      if (card.task_id) {
-        const taskBox = el(
-          "div",
-          null,
-          "task " +
-            (["overdue", "today", "active"].includes(card.due_state)
-              ? card.due_state
-              : "active"),
-        );
-        const message = el("span", card.message, "task-message");
-        message.title = card.message;
-        const due = el("time", dateBR(card.due_date));
-        due.dateTime = card.due_date;
-        due.title = `${card.due_state === "overdue" ? "Vencida" : card.due_state === "today" ? "Vence hoje" : "Vencimento"} · ${dateBR(card.due_date)}`;
-        taskBox.append(icon("task"), message, due);
-        if (card.task_assignee_name) taskBox.append(el("span", card.task_assignee_name, "task-owner"));
-        item.append(taskBox);
-      }
       const taskButton = button("", () => taskDialog(card));
       taskButton.className = "task-action icon-button ghost";
       taskButton.title = card.task_id ? "Editar tarefa" : "Criar tarefa";
@@ -912,9 +930,7 @@ function render() {
     $("board").append(column);
   }
   if (!data.funnels.length)
-    $("board").append(
-      el("p", "Aguardando provisionamento da conta.", "empty"),
-    );
+    $("board").append(el("p", "Nenhum funil ativo nesta conta.", "empty"));
   if (compact && !contactContext)
     $("board").replaceChildren(
       el(
@@ -1067,7 +1083,12 @@ async function loadStage(stage, offset) {
   enrichCards();
 }
 async function load(force = false) {
-  if (user?.activation && user.activation.activation_status !== "ready") return;
+  if (
+    user?.activation &&
+    (user.activation.enabled === false ||
+      user.activation.activation_status !== "ready")
+  )
+    return;
   if (!force && (editing || dragged || moving)) {
     pendingRefresh = true;
     return;
@@ -1191,12 +1212,19 @@ function renderFunnelPicker() {
       true,
     ),
   );
+  renderFunnelActions();
 }
 document.addEventListener("click", (event) => {
   document.querySelectorAll(".picker[open]").forEach((node) => {
     if (!node.contains(event.target)) node.open = false;
   });
 });
+filterMenu($("assignee"), "Todos os responsáveis", "Nenhum responsável nas negociações desta conta.");
+filterMenu($("label"), "Todas as etiquetas", "Nenhuma etiqueta nesta conta.", (name) => {
+  const color = metadata.labels.get(name)?.color;
+  return /^#[\da-f]{3,8}$/i.test(color || "") ? color : null;
+});
+filterMenu($("task-filter"), "Todas as tarefas", "");
 let filterTimer;
 ["search", "assignee", "label", "task-filter"].forEach(id => {
   $(id).oninput = () => {
@@ -1474,7 +1502,6 @@ async function editFunnel(funnel) {
           ...automation.value(),
         },
       ),
-    funnel ? manage : null,
   );
 }
 const STAGE_COLORS = [
@@ -1617,27 +1644,6 @@ async function moveStage(stage, step) {
   await load(true);
   manage();
 }
-function lossReasons() {
-  return api("/metrics/configuration").then((config) => {
-    const [reasons, input] = field(
-      "Um motivo por linha",
-      "textarea",
-      config.loss_reasons.join("\n"),
-    );
-    dialog(
-      "Motivos de perda",
-      [el("p", "\"Outro\" com descrição estará sempre disponível.", "field-hint"), reasons],
-      () =>
-        api("/metrics/configuration", "PUT", {
-          loss_reasons: input.value
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean),
-        }),
-      manage,
-    );
-  });
-}
 function iconButton(glyph, label, fn, cls = "") {
   const node = button("", fn);
   node.className = `icon-button ghost ${cls}`.trim();
@@ -1655,39 +1661,8 @@ function automationSummary(funnel, stages) {
 }
 function manage() {
   const funnel = data.funnels.find((f) => f.id === selected);
-  if (!funnel) return accountSettings();
+  if (!funnel) return;
   const stages = funnelStages();
-  const header = el("section", null, "manage-funnel");
-  const info = el("div", null, "manage-funnel-info");
-  info.append(
-    el("strong", funnel.name),
-    el(
-      "span",
-      `${stages.length} ${stages.length === 1 ? "etapa" : "etapas"} · parada após ${funnel.stale_days} dias${funnel.is_primary ? " · funil principal" : ""}`,
-      "muted",
-    ),
-    el("span", automationSummary(funnel, stages), "muted"),
-  );
-  const funnelActions = el("div", null, "manage-actions");
-  const editButton = button("Editar funil", () => editFunnel(funnel));
-  editButton.prepend(icon("edit"));
-  funnelActions.append(editButton);
-  if (!funnel.is_primary) {
-    const archive = button("Arquivar", () => {
-      dialog(
-        `Arquivar funil "${funnel.name}"?`,
-        [el("p", "O funil sai do quadro. Negociações e histórico são preservados.")],
-        () => api(`/funnels/${funnel.id}/archive`, "POST"),
-      );
-      $("dialog-save").textContent = "Arquivar funil";
-      $("dialog-save").classList.add("danger");
-    });
-    archive.className = "danger-ghost";
-    archive.prepend(icon("archive"));
-    funnelActions.append(archive);
-  }
-  header.append(info, funnelActions);
-
   const list = el("ol", null, "manage-stages");
   list.setAttribute("aria-label", "Etapas do funil");
   stages.forEach((stage, index) => {
@@ -1752,24 +1727,39 @@ function manage() {
   };
   quick.append(input, add);
 
-  const footer = el("div", null, "manage-footer");
-  const create = button("Novo funil", () => editFunnel());
-  create.prepend(icon("plus"));
-  const reasons = button("Motivos de perda", lossReasons);
-  const settings = button("Configuração da conta", accountSettings);
-  settings.prepend(icon("settings"));
-  footer.append(create, reasons, settings);
-
-  dialog("Gerenciar funil", [
-    header,
-    el("h3", "Etapas", "manage-section-title"),
+  dialog(`Etapas · ${funnel.name}`, [
+    el(
+      "p",
+      `${stages.length} ${stages.length === 1 ? "etapa" : "etapas"}. Negociação parada após ${funnel.stale_days} dias.`,
+      "muted",
+    ),
+    el("p", automationSummary(funnel, stages), "muted"),
     list,
     quick,
-    footer,
   ]);
   $("dialog").classList.add("manage-dialog");
 }
 $("manage").onclick = manage;
+const currentFunnel = () => data.funnels.find((f) => f.id === selected);
+$("new-funnel").onclick = () => editFunnel();
+$("edit-funnel").onclick = () => currentFunnel() && editFunnel(currentFunnel());
+$("archive-funnel").onclick = () => {
+  const funnel = currentFunnel();
+  if (!funnel || funnel.is_primary) return;
+  dialog(
+    `Arquivar funil "${funnel.name}"?`,
+    [el("p", "O funil sai do quadro. Negociações e histórico são preservados.")],
+    () => api(`/funnels/${funnel.id}/archive`, "POST"),
+  );
+  $("dialog-save").textContent = "Arquivar funil";
+  $("dialog-save").classList.add("danger");
+};
+// Ações que dependem do funil aberto; o funil principal não pode ser arquivado.
+function renderFunnelActions() {
+  const funnel = currentFunnel();
+  $("manage").hidden = $("edit-funnel").hidden = !funnel;
+  $("archive-funnel").hidden = !funnel || funnel.is_primary;
+}
 const actionNames = {
   cartao_movido: "Cartão movimentado",
   tarefa_criada: "Tarefa criada",
@@ -1862,112 +1852,38 @@ $("retry").onclick = () =>
       await load();
     })
     .catch(showError);
-$("reimport").onclick = async () => {
-  try {
-    const status = await api("/provisioning");
-    if (["pending", "running", "failed"].includes(status.import_status)) {
-      dialog("Retomar importação", [
-        el("p", `${status.imported_count} contatos processados. ${status.import_error || "Importação em andamento."}`),
-      ], async () => { await api("/import", "POST", { resume: true }); });
-      return;
-    }
-    const estimate = await api("/import/estimate");
-    const [modeLabel, mode] = selectField("O que importar", [
-      ["metadata", "Somente metadados dos contatos"],
-      ["cards", "Metadados e negociações ausentes no funil"],
-    ], "metadata");
-    const [funnelLabel, funnel] = selectField("Funil de destino", data.funnels
-      .filter((f) => !f.archived).map((f) => [f.id, f.name]), selected);
-    const [stageLabel, stage] = selectField("Etapa de destino", []);
-    const update = () => {
-      funnelLabel.hidden = stageLabel.hidden = mode.value !== "cards";
-      options(stage, data.stages.filter((s) => !s.archived && s.kind === "open" &&
-        s.funnel_id === Number(funnel.value)).map((s) => [s.id, s.name]));
-    };
-    mode.onchange = funnel.onchange = update;
-    update();
-    dialog("Importar contatos", [
-      el("p", `Estimativa: ${estimate.contacts} contatos. A importação pode ser retomada após falhas.`),
-      el("p", "Etapas e tarefas existentes permanecem locais. Negociações existentes não serão duplicadas."),
-      modeLabel, funnelLabel, stageLabel,
-    ], async () => {
-      await api("/import", "POST", { mode: mode.value,
-        funnel_id: mode.value === "cards" ? Number(funnel.value) : null,
-        stage_id: mode.value === "cards" ? Number(stage.value) : null });
-      notice("Importação agendada; consulte o progresso na configuração da conta.");
-    });
-  } catch (error) { showError(error); }
-};
-const phaseStatus = (status) => ({
-  ready: "pronto", pending: "na fila", failed: "falhou", idle: "não iniciada",
-  running: "em andamento", complete: "concluída",
-}[status] || status);
-async function accountSettings() {
-  try {
-    const state = await api("/session");
-    const provisioning = await api("/provisioning");
-    const mappings = ["origem", "campanha", "temperatura"].map((key) => {
-      const [label, input] = field(`Atributo de ${key} (vazio desativa)`, "text",
-        provisioning.attribute_mappings[key] || "");
-      return { key, label, input };
-    });
-    const [limitLabel, limit] = field("Contatos por lote e por conta", "number", provisioning.processing_limit);
-    limit.min = 1; limit.max = 100;
-    const [label, token] = field(
-      "Novo token de serviço (opcional)",
-      "password",
-      "",
-    );
-    token.autocomplete = "off";
-    dialog(
-      "Configuração da conta",
-      [
-        el(
-          "p",
-          `Conta ${account} · ${state.activation?.imported_count || 0} contatos importados.`,
-        ),
-        el("p", "Fuso horário: Brasília (America/Sao_Paulo)."),
-        el("p", `Provisionamento: ${phaseStatus(provisioning.activation_status)}. ${provisioning.activation_error || ""}`),
-        el("p", `Importação: ${phaseStatus(provisioning.import_status)} · ${provisioning.imported_count} contatos. ${provisioning.import_error || ""}`),
-        ...provisioning.provisioning_warnings.map((w) => el("p", w)),
-        ...mappings.map((m) => m.label), limitLabel,
-        el("p", "Recursos registrados nesta conta:"),
-        ...provisioning.resources.map((r) => el("p", `${r.resource_key}: ${r.ownership === "created" ? "criado pelo Kanban" : "preexistente"}`)),
-        button("Repetir provisionamento", async () => {
-          await api("/provisioning/retry", "POST"); closeDialog(); await init();
-        }),
-        label,
-        button(state.activation?.enabled ? "Desativar conta" : "Habilitar conta", async () => {
-          await api("/activation", "PUT", { enabled: !state.activation?.enabled });
-          closeDialog();
-          clearRestrictedData();
-          await init();
-        }),
-      ],
-      async () => {
-        const values = Object.fromEntries(mappings.map((m) => [m.key, m.input.value.trim() || null]));
-        if (JSON.stringify(values) !== JSON.stringify(provisioning.attribute_mappings) ||
-            Number(limit.value) !== provisioning.processing_limit) {
-          await api("/provisioning", "PUT", { mappings: values, processing_limit: Number(limit.value) });
-        }
-        if (token.value) await api("/activate", "POST", { token: token.value });
-        token.value = "";
-        await init();
-      },
-    );
-  } catch (error) {
-    showError(error);
-  }
-}
 $("activate-form").onsubmit = async (e) => {
   e.preventDefault();
+  const submit = $("activate-submit"),
+    input = $("service-token"),
+    feedback = $("token-error");
+  feedback.hidden = true;
+  input.removeAttribute("aria-invalid");
+  submit.disabled = true;
+  submit.setAttribute("aria-busy", "true");
+  submit.textContent = "Ativando…";
   try {
-    await api("/activate", "POST", { token: $("service-token").value });
-    $("service-token").value = "";
-    notice("Ativação agendada. A importação de contatos é uma ação separada.");
+    await api("/activate", "POST", { token: input.value });
+    input.value = "";
     await init();
   } catch (err) {
-    showError(err);
+    if (err.name === "AbortError") return;
+    // O erro fica junto do campo, como a mensagem de erro do Input do Chatwoot.
+    feedback.textContent =
+      err.status === 400
+        ? "Este token não tem acesso de administrador a esta conta. Confira se ele foi copiado do perfil de um administrador."
+        : err.status === 422
+          ? "O token parece incompleto. Copie-o novamente em Configurações do Perfil."
+          : err.name === "TimeoutError"
+            ? "A consulta demorou demais. Tente novamente."
+            : err.message;
+    feedback.hidden = false;
+    input.setAttribute("aria-invalid", "true");
+    input.focus();
+  } finally {
+    submit.disabled = false;
+    submit.removeAttribute("aria-busy");
+    submit.textContent = submit.dataset.label;
   }
 };
 window.addEventListener("message", (event) => {
@@ -1975,7 +1891,8 @@ window.addEventListener("message", (event) => {
   if (event.data?.event === "kanban:visibility") {
     // Escondido pelo loader: sem SSE; ao reaparecer, reconecta e atualiza.
     if (event.data.visible) {
-      if (!stream || stream.readyState === EventSource.CLOSED) connect();
+      const ready = !document.body.classList.contains("setup-mode");
+      if (ready && (!stream || stream.readyState === EventSource.CLOSED)) connect();
     } else {
       clearTimeout(reconnectTimer);
       stream?.close();
@@ -2004,7 +1921,8 @@ window.addEventListener("message", (event) => {
     }
   }
 });
-let reconnectAttempt = 0;
+let reconnectAttempt = 0,
+  setupTimer;
 function scheduleReconnect() {
   const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempt++, 5));
   reconnectTimer = setTimeout(connect, delay + Math.random() * 1000);
@@ -2013,37 +1931,114 @@ let stream = null;
 function connect() {
   clearTimeout(reconnectTimer);
   stream?.close();
-  const source = new EventSource(`/kanban/events?account=${account}`);
-  stream = source;
+  const source = (stream = new EventSource(
+    `/kanban/events?account=${account}`,
+  ));
+  const drop = () => {
+    source.close();
+    if (stream === source) stream = null;
+  };
+  // 403 aqui significa conta desativada em outra aba: volta ao painel de ativação.
+  const recover = (error) =>
+    error.status === 403 ? init().catch(showError) : showError(error);
   source.addEventListener("ready", () => {
     reconnectAttempt = 0;
     connectionStatus("Atualização em tempo real", "ready");
-    load().catch(showError);
+    load().catch(recover);
   });
   source.addEventListener("change", () => {
-    load(true).catch(showError);
+    load(true).catch(recover);
   });
   source.addEventListener("expired", () => {
-    source.close();
+    drop();
     clearRestrictedData();
     connectionStatus("Sessão expirada", "expired");
     notice("Entre novamente no Chatwoot para continuar.");
   });
   source.addEventListener("unavailable", () => {
-    source.close();
+    drop();
     clearRestrictedData();
     connectionStatus("Chatwoot indisponível · reconectando…", "connecting");
     scheduleReconnect();
   });
   source.onerror = () => {
-    source.close();
+    drop();
     connectionStatus("Reconectando…", "connecting");
     scheduleReconnect();
   };
   window.addEventListener("pagehide", () => source.close(), { once: true });
 }
 let prefetchedBoard;
+function setupState(activation, admin) {
+  if (!activation)
+    return admin
+      ? {
+          title: "Ative o Pipeline nesta conta",
+          text: "O Pipeline organiza os contatos desta conta em funis e etapas. Para começar, informe um token de acesso de administrador.",
+          form: true,
+        }
+      : {
+          title: "O Pipeline ainda não está ativo nesta conta",
+          text: "Peça a um administrador da conta para ativá-lo.",
+        };
+  if (activation.enabled === false)
+    return admin
+      ? {
+          title: "Reative o Pipeline nesta conta",
+          text: "O Pipeline foi desativado, mas funis, etapas e negociações continuam salvos. Para voltar a usar, informe um token de acesso de administrador.",
+          form: true,
+          submit: "Reativar Pipeline",
+        }
+      : {
+          title: "O Pipeline está desativado nesta conta",
+          text: "Peça a um administrador da conta para reativá-lo.",
+        };
+  if (activation.activation_status === "ready") return null;
+  const failed = activation.activation_status === "failed";
+  if (failed || activation.activation_error) {
+    const next = failed
+      ? admin
+        ? "Revise as configurações e tente novamente."
+        : "Avise um administrador da conta."
+      : "Uma nova tentativa será feita automaticamente.";
+    const retry = button("Tentar novamente", async () => {
+      await api("/provisioning/retry", "POST");
+      await init();
+    });
+    // Como no rodapé do Dialog do Chatwoot: secundária à esquerda, principal à direita.
+    const open = button("Abrir configurações", () => openPage("configuracoes"));
+    (failed ? open : retry).classList.add("primary");
+    return {
+      title: "Não foi possível concluir a configuração",
+      text: `Motivo: ${activation.activation_error || "erro desconhecido"}. ${next}`,
+      busy: !failed,
+      actions: admin ? (failed ? [retry, open] : [open, retry]) : [],
+    };
+  }
+  return {
+    title: "Configurando o Pipeline…",
+    text: "Estamos criando os atributos personalizados e o webhook desta conta. Isso costuma levar poucos segundos, e esta página atualiza sozinha.",
+    busy: true,
+  };
+}
+function setup(state) {
+  // Enquanto a conta não está pronta, só o painel de ativação aparece.
+  document.body.classList.toggle("setup-mode", Boolean(state));
+  $("activation").hidden = !state;
+  if (!state) return;
+  $("funnel-picker").replaceChildren(el("h1", "Pipeline"));
+  $("setup-title").textContent = state.title;
+  $("setup-text").textContent = state.text;
+  // SVG não tem a propriedade hidden; o atributo precisa ser trocado direto.
+  $("setup-spinner").toggleAttribute("hidden", !state.busy);
+  $("activate-form").hidden = !state.form;
+  $("activate-submit").dataset.label = state.submit || "Ativar Pipeline";
+  $("activate-submit").textContent = $("activate-submit").dataset.label;
+  $("setup-actions").replaceChildren(...(state.actions || []));
+  $("setup-actions").hidden = !state.actions?.length;
+}
 async function init() {
+  clearTimeout(setupTimer);
   // Primeira abertura: quadro e sessão em paralelo; o quadro já valida a sessão.
   if (loadGeneration === 0 && !prefetchedBoard) {
     const query = boardQuery();
@@ -2051,34 +2046,31 @@ async function init() {
   }
   user = await api("/session");
   const admin = user.role === "administrator";
-  ["manage", "reimport"].forEach((id) => ($(id).hidden = !admin));
-  $("activation").hidden = Boolean(user.activation) || !admin;
-  if (!user.activation && !admin)
-    notice("Peça a um administrador para ativar o Kanban nesta conta.");
-  if (user.activation && user.activation.activation_status !== "ready") {
-    notice(
-      `Provisionamento: ${user.activation.activation_error || "em andamento"}. Consulte a configuração da conta.`,
-    );
-    setTimeout(() => {
-      if (!editing) init().catch(showError);
-    }, 5000);
-  }
-  if (
-    user.activation?.activation_status === "ready" &&
-    $("notice").textContent.startsWith("Provisionamento:")
-  )
-    notice("");
-  if (user.activation?.enabled === false) {
+  const state = setupState(user.activation, admin);
+  $("funnel-actions").hidden = !admin || Boolean(state);
+  // O ponto de status leva à Situação em Configurações (só administrador).
+  $("status-link").classList.toggle("clickable", admin);
+  $("status-link").onclick = admin ? () => openPage("configuracoes") : null;
+  connectionStatus($("connection").title, $("connection").dataset.state);
+  if (state) {
+    // Conta desativada ou em configuração não recebe eventos do quadro.
+    clearTimeout(reconnectTimer);
+    stream?.close();
+    stream = null;
     clearRestrictedData();
-    notice("Kanban desativado nesta conta.");
-    if (admin) accountSettings();
+    setup(state);
+    if (user.activation && user.activation.enabled !== false) {
+      const poll = () => {
+        if (editing) setupTimer = setTimeout(poll, 5000);
+        else init().catch(showError);
+      };
+      setupTimer = setTimeout(poll, 5000);
+    }
     return;
   }
-  if (user.activation?.activation_status !== "ready") {
-    clearRestrictedData();
-    return;
-  }
+  setup(null);
   await load();
+  if (!stream) connect();
   const focusCard = Number(params.get("card"));
   if (focusCard) {
     const card = data.cards.find((c) => c.id === focusCard) || await api(`/cards/${focusCard}`);
@@ -2094,14 +2086,17 @@ if (compact) {
   document.body.classList.add("compact");
   parent.postMessage("chatwoot-dashboard-app:fetch-info", location.origin);
 }
-init().then(connect).catch(showError);
+init().catch(showError);
 
-$("more-actions").addEventListener("click", (event) => {
-  if (event.target.closest("button")) $("more-actions").open = false;
-});
-document.addEventListener("click", (event) => {
-  if (!$("more-actions").contains(event.target)) $("more-actions").open = false;
-});
+// Menus "⋯" da barra e do funil: fecham ao escolher um item ou clicar fora.
+for (const id of ["more-actions", "funnel-menu"]) {
+  $(id).addEventListener("click", (event) => {
+    if (event.target.closest("button")) $(id).open = false;
+  });
+  document.addEventListener("click", (event) => {
+    if (!$(id).contains(event.target)) $(id).open = false;
+  });
+}
 const activityTimer = setInterval(() => {
   document.querySelectorAll("[data-activity-at]").forEach((node) => {
     node.textContent = relativeTime(node.dataset.activityAt);

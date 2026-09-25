@@ -146,6 +146,7 @@ async def test_funnel_conversion_dwell_and_stale(client, metric_data):
     assert novo["dwell_days"] == 6
     assert proposal["conversion"] == 100 and proposal["next_conversion"] == 100
     assert proposal["dwell_days"] == 2
+    assert {"color", "kind"} <= novo.keys() and novo["kind"] == "open"
     assert [c["id"] for c in r["stale"]] == [metric_data["ids"][4]]
 
 
@@ -182,6 +183,11 @@ async def test_empty_period_zero_division_and_csv(client, metric_data):
     assert empty.json()["current"]["win_rate"] == 0
     assert empty.json()["current"]["average_ticket"] is None
     assert empty.json()["current"]["cycle_days"] is None
+    # Sem tarefa concluída não há taxa de prazo: nulo, e não 0% (UX-43).
+    tasks = await client.get("/kanban/metrics/tasks?start=2020-01-01&end=2020-01-01")
+    assert tasks.json()["current"]["completed"] == 0
+    assert tasks.json()["current"]["on_time_rate"] is None
+    assert tasks.json()["variation"]["on_time_rate"] is None
     assert (await block(client, "summary", "&assignee_id=999"))["current"]["leads"] == 0
     for name in ("summary", "funnel", "losses", "sources", "tasks", "timeline"):
         r = await client.get(
@@ -290,6 +296,16 @@ async def test_service_delegated_to_chatwoot(client):
         response = await client.get(f"/kanban/metrics/service?format={format}")
         assert response.status_code == 409
         assert "Chatwoot" in response.json()["detail"]
+
+
+async def test_options_report_configured_dimensions(client):
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE kb_accounts SET attribute_mappings=$1 WHERE account_id=1",
+            {"origem": "fonte", "campanha": None, "temperatura": None},
+        )
+    result = (await client.get("/kanban/metrics/options")).json()
+    assert result["dimensions"] == {"source": True, "campaign": False}
 
 
 async def test_source_and_campaign_aggregations(client, metric_data):

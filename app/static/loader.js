@@ -6,10 +6,22 @@
   const pages = [
     { key: "kanban", label: "Kanban", path: "/kanban", icon: "columns-3" },
     {
+      key: "tarefas",
+      label: "Tarefas",
+      path: "/kanban/tarefas",
+      icon: "list-checks",
+    },
+    {
       key: "metricas",
       label: "Métricas",
       path: "/kanban/metricas",
       icon: "chart-column",
+    },
+    {
+      key: "configuracoes",
+      label: "Configurações",
+      path: "/kanban/configuracoes",
+      icon: "settings",
     },
   ];
   let overlay, frame, currentAccount, sidebar, selectedPage, templates;
@@ -222,6 +234,18 @@
       ],
       "chart-column": [
         ["path", { d: "M3 3v16a2 2 0 0 0 2 2h16M9 17V9M14 17V5M19 17v-3" }],
+      ],
+      "list-checks": [
+        ["path", { d: "m3 17 2 2 4-4M3 7l2 2 4-4M13 6h8M13 12h8M13 18h8" }],
+      ],
+      settings: [
+        [
+          "path",
+          {
+            d: "M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.6a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.6a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2Z",
+          },
+        ],
+        ["circle", { cx: 12, cy: 12, r: 3 }],
       ],
     };
     for (const [tag, attrs] of shapes[name]) {
@@ -443,12 +467,15 @@
     action(header, "Pipeline", () => {
       if (collapsed) flyout = !flyout;
       else {
-        expanded = !expanded;
+        // Como o SidebarGroup do Chatwoot 4.18: sem página do Pipeline aberta,
+        // o clique no grupo já abre o primeiro item; com página aberta, recolhe.
+        expanded = selectedPage ? !expanded : true;
         try {
           localStorage.setItem(storageKey, String(expanded));
         } catch {
           /* Estado em memória continua funcional. */
         }
+        if (!selectedPage) return open(pages[0]);
       }
       renderState();
       layout();
@@ -504,6 +531,14 @@
       data.id > 0
     ) {
       open({ key: "kanban", label: "Kanban", path: "/kanban" }, data.id);
+      return;
+    }
+    if (
+      data?.event === "kanban:open-page" &&
+      String(data.account) === account()
+    ) {
+      const target = pages.find((page) => page.key === data.page);
+      if (target) open(target);
       return;
     }
     if (data?.event === "kanban:close") close();

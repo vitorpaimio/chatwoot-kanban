@@ -60,7 +60,7 @@ const child = (key) => `${menu} [data-pipeline-page=${key}]`;
       await page.locator(`${menu} [href], ${menu} router-link`).count(),
       0,
     );
-    assert.equal(await page.locator(`${menu} svg`).count(), 3);
+    assert.equal(await page.locator(`${menu} svg`).count(), 5);
     const nativeActive = page.locator("aside nav a[aria-current=page]").first();
     const activeClass = await nativeActive.getAttribute("class");
     const activeHref = await nativeActive.getAttribute("href");
@@ -133,6 +133,19 @@ const child = (key) => `${menu} [data-pipeline-page=${key}]`;
         .getAttribute("aria-current"),
       "page",
     );
+    // Sem página aberta, o grupo abre o Kanban direto, como o SidebarGroup nativo.
+    await page.locator(header).focus();
+    await page.keyboard.press("Enter");
+    await page
+      .frameLocator("#chatwoot-kanban-panel iframe")
+      .locator(".column")
+      .first()
+      .waitFor();
+    assert.equal(
+      await page.locator(child("kanban")).getAttribute("aria-current"),
+      "page",
+    );
+    // Com a página aberta, o mesmo gesto só recolhe o grupo.
     await page.locator(header).focus();
     await page.keyboard.press("Enter");
     assert.equal(
@@ -146,6 +159,14 @@ const child = (key) => `${menu} [data-pipeline-page=${key}]`;
       "false",
     );
     await page.locator(header).click();
+    await page.locator("#chatwoot-kanban-panel").waitFor();
+    assert.equal(
+      await page.locator(header).getAttribute("aria-expanded"),
+      "true",
+    );
+    // As medidas abaixo comparam o cabeçalho neutro, sem página ativa.
+    await page.keyboard.press("Escape");
+    await page.locator("#chatwoot-kanban-panel").waitFor({ state: "detached" });
     fs.mkdirSync(".local", { recursive: true });
     const measurements = [];
     for (const theme of ["light", "dark"]) {
