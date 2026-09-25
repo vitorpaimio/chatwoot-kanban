@@ -108,7 +108,7 @@ puts 'HUMAN=' + {email: u.email, password: password}.to_json
     script = (
         (ROOT / "install.sh")
         .read_text()
-        .replace("ghcr.io/vitorpaimio/chatwoot-kanban:installer-master", image)
+        .replace("ghcr.io/vitorpaimio/chatwoot-kanban:installer-main", image)
     )
 
     def bootstrap(*args):

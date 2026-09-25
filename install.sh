@@ -20,7 +20,7 @@ state=/opt/chatwoot-kanban
 umask 077
 mkdir -p "$state"
 chmod 700 "$state"
-image=ghcr.io/vitorpaimio/chatwoot-kanban:installer-master
+image=ghcr.io/vitorpaimio/chatwoot-kanban:installer-main
 echo 'Preparando o assistente do Chatwoot Kanban…'
 docker pull --quiet "$image" >/dev/null
 # Usa o ID obtido do pull, sem resolver novamente uma tag mutável ao executar.
