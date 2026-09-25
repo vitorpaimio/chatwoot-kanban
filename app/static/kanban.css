@@ -1183,6 +1183,46 @@ button:disabled.icon-button {
 #dialog-save.danger:hover {
   background: rgb(var(--ruby-10));
 }
+.automation {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.automation legend {
+  padding: 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.automation-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.automation-body[hidden] {
+  display: none;
+}
+.automation-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.check-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--slate-12));
+}
+.inbox-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 12px;
+  max-height: 180px;
+  overflow-y: auto;
+}
 .field-hint {
   margin: 0;
   font-size: 12px;
