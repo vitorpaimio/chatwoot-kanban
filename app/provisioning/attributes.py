@@ -23,6 +23,7 @@ class Attribute:
     required: bool = True
     values: tuple[str, ...] = ()
     model: str = "contact_attribute"
+    dynamic: bool = False
 
     def payload(self) -> dict:
         """Produz os parâmetros aceitos pela API de definições."""
@@ -37,7 +38,24 @@ class Attribute:
 
 
 CATALOG = (
-    Attribute("kanban_etapa", "Funil / Etapa", "Espelho da etapa local do Kanban."),
+    # As opções acompanham os funis ativos; o worker converte versões em texto.
+    Attribute(
+        "kanban_etapa",
+        "Funil / Etapa",
+        "Etapa do Kanban. Escolher outra opção move o contato no quadro.",
+        "list",
+        values=tuple(
+            f"Funil principal / {name}"
+            for name in (
+                "Novo",
+                "Em atendimento",
+                "Proposta enviada",
+                "Ganho",
+                "Perdido",
+            )
+        ),
+        dynamic=True,
+    ),
     Attribute("kanban_tarefa", "Tarefa do Kanban", "Espelho da tarefa local ativa."),
     Attribute(
         "kanban_tarefa_vencimento",
@@ -129,10 +147,12 @@ def attribute_plan(definitions: list[dict], mappings: dict) -> list[dict]:
         elif existing and existing["attribute_display_type"] not in (
             attribute.kind,
             attribute.payload()["attribute_display_type"],
+            *(("text", 0) if attribute.dynamic else ()),
         ):
             problem = "tipo incompatível"
         elif (
             existing
+            and not attribute.dynamic
             and attribute.values
             and not set(attribute.values).issubset(
                 set(existing.get("attribute_values") or [])

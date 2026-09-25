@@ -51,6 +51,10 @@ ActiveRecord::Base.transaction do
         created = attribute.nil?
         attribute ||= account.custom_attribute_definitions.create!(payload)
         expected_type = CustomAttributeDefinition.attribute_display_types.key(payload.fetch('attribute_display_type'))
+        # Versões anteriores criavam a etapa como texto; a lista preserva os valores.
+        if attribute.attribute_key == 'kanban_etapa' && attribute.attribute_display_type == 'text' && expected_type == 'list'
+          attribute.update!(attribute_display_type: expected_type, attribute_values: payload.fetch('attribute_values'))
+        end
         raise 'Conflito de tipo' unless attribute.attribute_display_type == expected_type
         receipt = { 'account' => id, 'id' => attribute.id,
                     'key' => attribute.attribute_key, 'type' => expected_type,
@@ -106,7 +110,7 @@ ActiveRecord::Base.transaction do
         entry['attributes'].each do |a|
           next unless a['ownership'] == 'created'
           attribute = Account.find(a['account']).custom_attribute_definitions.find_by(id: a['id'])
-          if attribute && attribute.attribute_key == a['key'] && attribute.attribute_display_type == a['type'] && attribute.attribute_model == 'contact_attribute'
+          if attribute && attribute.attribute_key == a['key'] && (attribute.attribute_display_type == a['type'] || (a['key'] == 'kanban_etapa' && attribute.attribute_display_type == 'list')) && attribute.attribute_model == 'contact_attribute'
             attribute.destroy!
           end
         end

@@ -19,7 +19,13 @@ from app.database import (
 )
 from app.provisioning.attributes import AttributeConflictError
 from app.recovery import import_one, reconcile_one
-from app.services import SYSTEM, projection, refresh_contact, setup_account
+from app.services import (
+    SYSTEM,
+    projection,
+    refresh_contact,
+    setup_account,
+    sync_stage_options,
+)
 
 logger = logging.getLogger("kanban.worker")
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4()}"
@@ -80,7 +86,9 @@ async def process_delivery(conn, cw, row):
         try:
             async with conn.transaction():
                 if row["contact_id"]:
-                    await refresh_contact(conn, cw, row["contact_id"])
+                    await refresh_contact(
+                        conn, cw, row["contact_id"], apply_remote=True
+                    )
                 await conn.execute(
                     "UPDATE kb_deliveries SET "
                     "status='processed',processed_at=now(),error=NULL WHERE id=$1",
@@ -286,6 +294,15 @@ async def tick():
                             continue
                     elif row["activation_status"] != "ready":
                         continue
+                    try:
+                        await sync_stage_options(conn, cw)
+                    except Exception as exc:
+                        # Lista desatualizada não pode bloquear eventos e espelhos.
+                        logger.warning(
+                            "Conta %s: opções de etapa: %s",
+                            account,
+                            type(exc).__name__,
+                        )
                     limit = row["processing_limit"]
                     deliveries = await conn.fetch(
                         """SELECT * FROM kb_deliveries WHERE account_id=$1 AND

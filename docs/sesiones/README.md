@@ -57,3 +57,4 @@ Formato: `<número>-<data>-<assunto>.md`.
 - [Sessão 037 — Assistente de instalação](037-2026-09-24-assistente-instalacao.md)
 - [Sessão 038 — Incidente de rede e webhook](038-2026-09-24-incidente-rede-webhook.md)
 - [Sessão 039 — Integração e release candidata](039-2026-09-24-release-candidata.md)
+- [Sessão 040 — Funil / Etapa como lista editável](040-2026-09-25-etapa-lista-editavel.md)
