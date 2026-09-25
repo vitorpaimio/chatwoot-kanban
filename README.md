@@ -110,7 +110,7 @@ No terminal da **VPS Linux que já hospeda o Chatwoot em Docker**, entre como ro
 execute:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/master/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/main/install.sh)
 ```
 
 O comando abre um assistente no terminal. Use **↑ ↓** para navegar, **Espaço** para
@@ -142,7 +142,7 @@ Para **nenhuma pergunta**, se existe uma única instalação/conta e a descobert
 inequívoca, acrescente `--yes`:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/master/install.sh) --yes
+bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/main/install.sh) --yes
 ```
 
 No Compose, informe também `--public-url http://IP-DA-VPS:18080`. Para acesso só por
@@ -164,11 +164,11 @@ operação no final:
 
 ```bash
 # Conferir saúde:
-bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/master/install.sh) status
+bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/main/install.sh) status
 # Atualizar com backup:
-bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/master/install.sh) update
+bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/main/install.sh) update
 # Remover a integração, preservando dados e atributos:
-bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/master/install.sh) uninstall
+bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/main/install.sh) uninstall
 ```
 
 O estado fica em **`/opt/chatwoot-kanban`**. Preserve esse diretório, seus backups e
@@ -178,7 +178,7 @@ plano, sem alterar o Chatwoot. O instalador não importa contatos automaticament
 
 Instalações com nomes, wrappers ou proxy fora do padrão podem exigir opções
 adicionais: execute o comando com `--help` ou use a
-[configuração avançada](docs/instalacao-avancada.md). A versão candidata atual é `v0.2.0-rc.2`, com a etapa editável pelo Chatwoot.
+[configuração avançada](docs/instalacao-avancada.md). A versão candidata atual é `v0.2.0-rc.3`, com criação automática de negociações e carregamento mais rápido.
 A versão estável 0.2.0 segue em preparação; disponibilidade do instalador não equivale à certificação de todos os
 ambientes, versões e arquiteturas.
 

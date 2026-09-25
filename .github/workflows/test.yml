@@ -125,4 +125,10 @@ jobs:
         env:
           INSTALLER_CANDIDATE: ${{ steps.image.outputs.name }}:installer-sha-${{ github.sha }}
           INSTALLER_PUBLIC: ${{ steps.image.outputs.name }}:installer-${{ github.ref_name }}
-        run: docker buildx imagetools create --tag "$INSTALLER_PUBLIC" "$INSTALLER_CANDIDATE"
+        run: |
+          docker buildx imagetools create --tag "$INSTALLER_PUBLIC" "$INSTALLER_CANDIDATE"
+          # Scripts antigos ainda baixam installer-master; a tag segue a main.
+          if [ "${{ github.ref_name }}" = main ]; then
+            docker buildx imagetools create \
+              --tag "${INSTALLER_PUBLIC%:*}:installer-master" "$INSTALLER_CANDIDATE"
+          fi

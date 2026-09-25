@@ -59,3 +59,5 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 
 - [ADR-041 — Carregamento rápido do quadro](041-carregamento-quadro.md)
 - [ADR-040 — Criação automática de negociações](040-criacao-automatica-negociacoes.md)
+
+- [ADR-042 — Branch principal main protegida](042-branch-main-protegida.md)

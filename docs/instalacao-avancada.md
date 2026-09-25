@@ -23,7 +23,7 @@ Alembic manualmente para este caminho.
 O repositório e as imagens GHCR são públicos; clone e pull não exigem login.
 
 ```sh
-git clone --branch master https://github.com/vitorpaimio/chatwoot-kanban.git
+git clone --branch main https://github.com/vitorpaimio/chatwoot-kanban.git
 cd chatwoot-kanban
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
@@ -35,7 +35,7 @@ chmod 700 .local
 ## 2. Obter a imagem do commit aprovado
 
 Abra [Actions → Validar e publicar](https://github.com/vitorpaimio/chatwoot-kanban/actions/workflows/test.yml)
-e escolha uma execução **concluída com sucesso** da branch `master`. No resumo do
+e escolha uma execução **concluída com sucesso** da branch `main`. No resumo do
 job de publicação, copie o commit testado e a referência
 `ghcr.io/vitorpaimio/chatwoot-kanban@sha256:...`. Ela também está em
 `image-digest.txt`, no artefato `image-digest-<commit>`. Se a publicação ainda não

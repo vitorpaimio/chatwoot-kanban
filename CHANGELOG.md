@@ -6,15 +6,27 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+## [0.2.0-rc.3] — 2026-09-25
+
+Versão candidata com criação automática de negociações e carregamento mais rápido.
+
+### Adicionado
+
+- Entrada automática por funil: lead novo no Chatwoot vira negociação na etapa
+  escolhida, só no primeiro contato e com filtro por caixa de entrada (ADR-040).
+
 ### Alterado
 
 - Quadro abre mais rápido: sessão em cache curto, funil padrão numa consulta,
   arquivos estáticos em cache, painel mantido ao navegar (ADR-041).
 - Responsável do cartão vem da conversa aberta, não da resolvida mais recente.
-### Adicionado
+- Branch principal renomeada para `main` e protegida; instalador em
+  `installer-main` (ADR-042).
 
-- Entrada automática por funil: lead novo no Chatwoot vira negociação na etapa
-  escolhida, só no primeiro contato e com filtro por caixa de entrada (ADR-040).
+### Atualização
+
+- A migração 013 adiciona a configuração de entrada automática aos funis; o
+  serviço de migração aplica na implantação.
 
 ## [0.2.0-rc.2] — 2026-09-25
 
