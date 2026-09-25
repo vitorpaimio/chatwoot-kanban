@@ -6,6 +6,12 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+### Alterado
+
+- Quadro abre mais rápido: sessão em cache curto, funil padrão numa consulta,
+  arquivos estáticos em cache, painel mantido ao navegar (ADR-041).
+- Responsável do cartão vem da conversa aberta, não da resolvida mais recente.
+
 ## [0.2.0-rc.2] — 2026-09-25
 
 Versão candidata com etapa editável pelo Chatwoot e melhorias na gestão do funil.

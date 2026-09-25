@@ -13,9 +13,16 @@ if not urlparse(os.environ["DATABASE_URL"]).path.endswith("_test"):
 
 os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode()
 
-from app import database
+from app import database, security
 from app.main import app
 from app.security import encrypt, identity
+
+
+@pytest_asyncio.fixture(autouse=True)
+def fresh_sessions():
+    security._profile_cache.clear()
+    yield
+    security._profile_cache.clear()
 
 
 @pytest_asyncio.fixture

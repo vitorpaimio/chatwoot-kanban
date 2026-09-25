@@ -18,6 +18,20 @@ let editing = false,
   landingTimer,
   reconnectTimer;
 const { money, dateBR } = window.KanbanHelpers;
+// Funil escolhido por último: o primeiro carregamento já pede a página certa.
+const funnelKey = `kanban-funnel-${account}`;
+try {
+  selected = Number(localStorage.getItem(funnelKey)) || undefined;
+} catch {
+  /* Armazenamento pode estar desabilitado. */
+}
+function rememberFunnel(id) {
+  try {
+    localStorage.setItem(funnelKey, String(id));
+  } catch {
+    /* Armazenamento pode estar desabilitado. */
+  }
+}
 const el = (tag, text, cls) => {
   const n = document.createElement(tag);
   if (text != null) n.textContent = String(text);
@@ -27,7 +41,7 @@ const el = (tag, text, cls) => {
 const metadata = {
   labels: new Map(),
   agents: new Map(),
-  conversations: new Map(),
+  inboxes: new Map(),
 };
 let metadataLoaded = false,
   metadataLoading;
@@ -203,49 +217,27 @@ async function nativeApi(path) {
   if (!response.ok) throw new Error("Metadados indisponíveis");
   return response.json();
 }
+// Canal vem da caixa de entrada: uma consulta por conta, não uma por cartão.
 function enrichCards() {
-  if (metadataLoading) return;
+  if (metadataLoading || metadataLoaded) return;
   const epoch = authorizationEpoch;
-  let changed = false;
   metadataLoading = (async () => {
-    if (!metadataLoaded) {
-      const results = await Promise.allSettled([
-        nativeApi("/labels"),
-        nativeApi("/agents"),
-      ]);
-      if (results[0].status === "fulfilled")
-        for (const label of results[0].value.payload || [])
-          metadata.labels.set(label.title, label);
-      if (results[1].status === "fulfilled")
-        for (const agent of results[1].value.payload || results[1].value || [])
-          metadata.agents.set(agent.id, agent);
-      changed = true;
-      metadataLoaded = results.every((result) => result.status === "fulfilled");
-    }
-    const ids = [
-      ...new Set(
-        data.cards
-          .filter((card) => card.funnel_id === selected)
-          .map((card) => card.conversation_id)
-          .filter((id) => id && !metadata.conversations.has(id)),
-      ),
-    ];
-    await Promise.all(
-      Array.from({ length: Math.min(4, ids.length) }, async () => {
-        while (ids.length) {
-          const id = ids.shift();
-          try {
-            const conversation = await nativeApi(`/conversations/${id}`);
-            if (epoch !== authorizationEpoch) return;
-            metadata.conversations.set(id, conversation);
-            changed = true;
-          } catch {
-            /* Exibir canal genérico sem inventar informação. */
-          }
-        }
-      }),
-    );
-    if (epoch !== authorizationEpoch || !changed) return;
+    const results = await Promise.allSettled([
+      nativeApi("/labels"),
+      nativeApi("/agents"),
+      nativeApi("/inboxes"),
+    ]);
+    if (epoch !== authorizationEpoch) return;
+    if (results[0].status === "fulfilled")
+      for (const label of results[0].value.payload || [])
+        metadata.labels.set(label.title, label);
+    if (results[1].status === "fulfilled")
+      for (const agent of results[1].value.payload || results[1].value || [])
+        metadata.agents.set(agent.id, agent);
+    if (results[2].status === "fulfilled")
+      for (const inbox of results[2].value.payload || [])
+        metadata.inboxes.set(inbox.id, inbox);
+    metadataLoaded = results.every((result) => result.status === "fulfilled");
     renderLabelOptions();
     if (!editing && !dragged && !moving) render();
     else pendingRefresh = true;
@@ -523,7 +515,8 @@ function clearRestrictedData() {
   dragged = null;
   moving = false;
   data = { funnels: [], stages: [], cards: [], contacts: [] };
-  metadata.conversations.clear();
+  metadata.inboxes.clear();
+  metadataLoaded = false;
   if ($("dialog").open) closeDialog();
   render();
 }
@@ -778,11 +771,7 @@ function render() {
       const heading = el("div", null, "card-heading");
       const portrait = el("div", null, "avatar-wrap");
       portrait.append(avatar(card.name, card.thumbnail));
-      const conversation = metadata.conversations.get(card.conversation_id);
-      const channelName =
-        conversation?.meta?.channel ||
-        conversation?.channel ||
-        conversation?.inbox?.channel_type;
+      const channelName = metadata.inboxes.get(card.conversation_inbox_id)?.channel_type;
       if (card.conversation_id) {
         const channel = el("span", null, "channel");
         const type = String(channelName || "").replace("Channel::", "");
@@ -1058,7 +1047,7 @@ $("board").ondrop = async (event) => {
 let editingCardId = null, refreshHistory = null, renderedFunnel = null;
 const stageOffsets = new Map();
 function boardQuery(stage, offset = 0) {
-  const params = new URLSearchParams({limit: selected ? "50" : "1", offset: String(offset),
+  const params = new URLSearchParams({limit: "50", offset: String(offset),
     search: $("search").value, label: $("label").value, task: $("task-filter").value});
   if (selected) params.set("funnel_id", selected);
   if (stage) params.set("stage_id", stage);
@@ -1090,7 +1079,10 @@ async function load(force = false) {
     catch (error) { if ([401,403,404].includes(error.status)) clearRestrictedData(); throw error; }
   }
   if (force && editing && refreshHistory) await refreshHistory();
-  const next = await api(boardQuery());
+  const early =
+    prefetchedBoard?.query === boardQuery() ? await prefetchedBoard.result : null;
+  prefetchedBoard = null;
+  const next = early || (await api(boardQuery()));
   if (epoch !== authorizationEpoch || generation !== loadGeneration) return;
   const removed = !next.totals && data.cards.some((card) => !next.cards.some((c) => c.id === card.id));
   if (removed) {
@@ -1101,6 +1093,7 @@ async function load(force = false) {
     if (editing && !dragged && !moving) { data = next; stageOffsets.clear(); render(); }
     return;
   }
+  if (!selected && next.funnel_id) selected = next.funnel_id;
   const unchanged = JSON.stringify(data) === JSON.stringify(next);
   data = next;
   stageOffsets.clear();
@@ -1192,6 +1185,7 @@ function renderFunnelPicker() {
       "Selecionar funil",
       (id) => {
         selected = id;
+        rememberFunnel(id);
         load().catch(showError);
       },
       true,
@@ -1907,6 +1901,18 @@ $("activate-form").onsubmit = async (e) => {
 };
 window.addEventListener("message", (event) => {
   if (event.origin !== location.origin || event.source !== parent) return;
+  if (event.data?.event === "kanban:visibility") {
+    // Escondido pelo loader: sem SSE; ao reaparecer, reconecta e atualiza.
+    if (event.data.visible) {
+      if (!stream || stream.readyState === EventSource.CLOSED) connect();
+    } else {
+      clearTimeout(reconnectTimer);
+      stream?.close();
+      stream = null;
+      connectionStatus("Pausado enquanto oculto", "connecting");
+    }
+    return;
+  }
   let context = event.data;
   try {
     if (typeof context === "string") context = JSON.parse(context);
@@ -1932,9 +1938,12 @@ function scheduleReconnect() {
   const delay = Math.min(30000, 1000 * 2 ** Math.min(reconnectAttempt++, 5));
   reconnectTimer = setTimeout(connect, delay + Math.random() * 1000);
 }
+let stream = null;
 function connect() {
   clearTimeout(reconnectTimer);
+  stream?.close();
   const source = new EventSource(`/kanban/events?account=${account}`);
+  stream = source;
   source.addEventListener("ready", () => {
     reconnectAttempt = 0;
     connectionStatus("Atualização em tempo real", "ready");
@@ -1962,7 +1971,13 @@ function connect() {
   };
   window.addEventListener("pagehide", () => source.close(), { once: true });
 }
+let prefetchedBoard;
 async function init() {
+  // Primeira abertura: quadro e sessão em paralelo; o quadro já valida a sessão.
+  if (loadGeneration === 0 && !prefetchedBoard) {
+    const query = boardQuery();
+    prefetchedBoard = { query, result: api(query).catch(() => null) };
+  }
   user = await api("/session");
   const admin = user.role === "administrator";
   ["manage", "reimport"].forEach((id) => ($(id).hidden = !admin));

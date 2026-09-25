@@ -56,3 +56,5 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 - [ADR-038 — Instalação na VPS](038-instalacao-vps.md)
 
 - [ADR-039 — Funil / Etapa como lista editável](039-etapa-lista-editavel.md)
+
+- [ADR-041 — Carregamento rápido do quadro](041-carregamento-quadro.md)

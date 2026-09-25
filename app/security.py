@@ -61,6 +61,48 @@ async def allowed_inboxes(account: int, actor: int, credentials: dict) -> list[i
     return ids
 
 
+PROFILE_CACHE_LIMIT = 2000
+_profile_cache = {}
+
+
+async def chatwoot_profile(credentials: dict) -> dict:
+    """Valida a sessão no Chatwoot com cache curto por credencial.
+
+    Cada chamada ao Kanban revalidava a sessão; o cache evita esse custo no
+    carregamento. Só respostas válidas são guardadas, e o prazo limita por quanto
+    tempo uma sessão encerrada no Chatwoot ainda é aceita.
+    """
+    fingerprint = hashlib.sha256(
+        json.dumps(credentials, sort_keys=True).encode()
+    ).digest()
+    now = time.monotonic()
+    cached = _profile_cache.get(fingerprint)
+    if cached and cached[0] > now:
+        return cached[1]
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(
+                settings.chatwoot_base_url + "/api/v1/profile", headers=credentials
+            )
+        if response.status_code in (401, 403):
+            _profile_cache.pop(fingerprint, None)
+            raise HTTPException(401, "Sessão expirada")
+        response.raise_for_status()
+        profile = response.json()
+    except httpx.HTTPError:
+        raise HTTPException(
+            503, "Não foi possível validar a sessão no Chatwoot"
+        ) from None
+    if settings.session_cache_seconds > 0:
+        if len(_profile_cache) >= PROFILE_CACHE_LIMIT:
+            for key in [k for k, v in _profile_cache.items() if v[0] <= now]:
+                del _profile_cache[key]
+            if len(_profile_cache) >= PROFILE_CACHE_LIMIT:
+                _profile_cache.clear()
+        _profile_cache[fingerprint] = (now + settings.session_cache_seconds, profile)
+    return profile
+
+
 async def identity(request: Request):
     if request.method not in ("GET", "HEAD", "OPTIONS"):
         origin = request.headers.get("origin")
@@ -79,19 +121,7 @@ async def identity(request: Request):
             credentials = {k: raw[k] for k in ("access-token", "client", "uid")}
         except (ValueError, KeyError, TypeError):
             raise HTTPException(401, "Entre novamente no Chatwoot") from None
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            response = await client.get(
-                settings.chatwoot_base_url + "/api/v1/profile", headers=credentials
-            )
-        if response.status_code in (401, 403):
-            raise HTTPException(401, "Sessão expirada")
-        response.raise_for_status()
-        profile = response.json()
-    except httpx.HTTPError:
-        raise HTTPException(
-            503, "Não foi possível validar a sessão no Chatwoot"
-        ) from None
+    profile = await chatwoot_profile(credentials)
     try:
         account = int(request.query_params["account"])
     except (KeyError, ValueError):
