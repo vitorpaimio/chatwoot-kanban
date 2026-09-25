@@ -5,6 +5,9 @@ from app.database import notify, record, require_enabled
 from app.provisioning.attributes import provision_attributes, remember_resource
 
 SYSTEM = {"id": None, "name": "Sistema"}
+CHATWOOT = {"id": None, "name": "Chatwoot"}
+STAGE_ATTRIBUTE = "kanban_etapa"
+REMOTE_LOSS_REASON = "Outro: etapa alterada no atributo do contato"
 DEFAULT_STAGES = [
     ("Novo", "open"),
     ("Em atendimento", "open"),
@@ -58,13 +61,168 @@ async def projection(conn, account, contact):
         contact,
     )
     return {
-        "kanban_etapa": f"{recent['funnel']} / {recent['stage']}" if recent else None,
+        STAGE_ATTRIBUTE: stage_label(recent["funnel"], recent["stage"])
+        if recent
+        else None,
         "kanban_tarefa": task["message"] if task else None,
         "kanban_tarefa_vencimento": str(task["due_date"]) if task else None,
     }
 
 
-async def refresh_contact(conn, cw, contact_id, project_cards=True):
+def stage_label(funnel: str, stage: str) -> str:
+    """Formata a opção da lista do Chatwoot para uma etapa do Kanban."""
+    return f"{funnel} / {stage}"
+
+
+async def stage_options(conn, account: int) -> list[dict]:
+    """Lista as etapas ativas na ordem do quadro, com o rótulo do atributo."""
+    rows = await conn.fetch(
+        """SELECT f.id AS funnel_id,f.name AS funnel,s.id AS stage_id,
+        s.name AS stage,s.kind FROM kb_funnels f JOIN kb_stages s ON
+        (s.account_id,s.funnel_id)=(f.account_id,f.id) WHERE f.account_id=$1
+        AND NOT f.archived AND NOT s.archived
+        ORDER BY f.is_primary DESC,f.position,f.id,s.position,s.id""",
+        account,
+    )
+    return [{**r, "label": stage_label(r["funnel"], r["stage"])} for r in rows]
+
+
+async def sync_stage_options(conn, cw) -> None:
+    """Mantém a lista do atributo de etapa igual aos funis e etapas ativos.
+
+    Contas criadas antes da lista têm o atributo como texto; a primeira
+    sincronização converte o tipo sem alterar os valores já gravados nos contatos.
+    """
+    resource = await conn.fetchrow(
+        """SELECT remote_id,definition FROM kb_resources WHERE account_id=$1 AND
+        resource_type='attribute' AND resource_key=$2""",
+        cw.account,
+        "contact:" + STAGE_ATTRIBUTE,
+    )
+    if not resource:
+        return
+    values = [o["label"] for o in await stage_options(conn, cw.account)]
+    definition = resource["definition"] or {}
+    if (
+        definition.get("attribute_display_type") in ("list", 6)
+        and definition.get("attribute_values") == values
+    ):
+        return
+    remote = await cw.request(
+        "PATCH",
+        f"/custom_attribute_definitions/{resource['remote_id']}",
+        json={"attribute_display_type": 6, "attribute_values": values},
+    )
+    remote = {**definition, **(remote or {}), "id": resource["remote_id"]}
+    remote.update(attribute_display_type="list", attribute_values=values)
+    await remember_resource(
+        conn, cw.account, "attribute", "contact:" + STAGE_ATTRIBUTE, remote, False
+    )
+
+
+async def apply_remote_stage(conn, account: int, contact_id: int, value) -> bool:
+    """Leva ao quadro a etapa escolhida na lista do contato no Chatwoot.
+
+    Alterações locais ainda não sincronizadas prevalecem; o valor que o próprio
+    Kanban gravou por último não é reaplicado.
+
+    Returns:
+        Verdadeiro quando o quadro passou a refletir o valor remoto.
+    """
+    sync = await conn.fetchrow(
+        "SELECT status,projection FROM kb_sync WHERE account_id=$1 AND contact_id=$2",
+        account,
+        contact_id,
+    )
+    if sync and sync["status"] != "synced":
+        return False
+    if sync and (sync["projection"] or {}).get(STAGE_ATTRIBUTE) == value:
+        return False
+    targets = [o for o in await stage_options(conn, account) if o["label"] == value]
+    if len(targets) != 1:
+        return False
+    target = targets[0]
+    card = await conn.fetchrow(
+        """SELECT c.* FROM kb_cards c JOIN kb_contacts ct ON
+        (ct.account_id,ct.contact_id)=(c.account_id,c.contact_id)
+        WHERE c.account_id=$1 AND c.contact_id=$2 AND c.funnel_id=$3
+        AND NOT EXISTS (SELECT 1 FROM kb_card_deletions d WHERE
+        (d.account_id,d.card_id)=(c.account_id,c.id))
+        ORDER BY c.id=ct.last_card_id DESC,c.id DESC LIMIT 1""",
+        account,
+        contact_id,
+        target["funnel_id"],
+    )
+    reason = REMOTE_LOSS_REASON if target["kind"] == "lost" else None
+    if card is None:
+        card_id = await conn.fetchval(
+            """INSERT INTO kb_cards(account_id,contact_id,funnel_id,stage_id,
+            lost_reason,conversation_id,conversation_inbox_id)
+            SELECT $1,$2,$3,$4,$5,conversation_id,inbox_id FROM kb_contacts
+            WHERE account_id=$1 AND contact_id=$2 RETURNING id""",
+            account,
+            contact_id,
+            target["funnel_id"],
+            target["stage_id"],
+            reason,
+        )
+        action = "cartao_criado"
+        before, after = None, {"card_id": card_id, "lost_reason": reason}
+    else:
+        card_id = card["id"]
+        action = "cartao_movido"
+        before = {
+            "stage_id": card["stage_id"],
+            "value_cents": card["value_cents"],
+            "entered_at": card["stage_entered_at"].isoformat(),
+        }
+        if card["stage_id"] != target["stage_id"]:
+            await conn.execute(
+                """UPDATE kb_cards SET stage_id=$3,lost_reason=$4,
+                version=version+1,stage_entered_at=now(),position=coalesce(
+                (SELECT max(position) FROM kb_cards WHERE account_id=$1
+                AND stage_id=$3),0)+1024 WHERE account_id=$1 AND id=$2""",
+                account,
+                card_id,
+                target["stage_id"],
+                reason,
+            )
+        else:
+            reason = card["lost_reason"]
+        after = {
+            "card_id": card_id,
+            "stage_id": target["stage_id"],
+            "value_cents": card["value_cents"],
+            "lost_reason": reason,
+        }
+    await conn.execute(
+        "UPDATE kb_contacts SET last_card_id=$3 WHERE account_id=$1 AND contact_id=$2",
+        account,
+        contact_id,
+        card_id,
+    )
+    await record(
+        conn,
+        account,
+        contact_id,
+        CHATWOOT,
+        action,
+        before,
+        after,
+        target["funnel_id"],
+        target["stage_id"],
+    )
+    return True
+
+
+async def refresh_contact(conn, cw, contact_id, project_cards=True, apply_remote=False):
+    """Atualiza metadados do contato e confere o espelho do Kanban.
+
+    Args:
+        apply_remote: Aplica a etapa escolhida no Chatwoot. Só eventos de
+            webhook usam esta opção; importação e reconciliação não tratam
+            espelhos antigos como decisão do usuário.
+    """
     account = cw.account
     data = await cw.request("GET", f"/contacts/{contact_id}")
     contact = data.get("payload", data)
@@ -147,7 +305,15 @@ async def refresh_contact(conn, cw, contact_id, project_cards=True):
         account,
         contact_id,
     )
-    if project_cards and has_local_state:
+    applied = (
+        project_cards
+        and apply_remote
+        and bool(attributes.get(STAGE_ATTRIBUTE))
+        and await apply_remote_stage(
+            conn, account, contact_id, attributes[STAGE_ATTRIBUTE]
+        )
+    )
+    if project_cards and has_local_state and not applied:
         expected = await projection(conn, account, contact_id)
         if any(attributes.get(k) != v for k, v in expected.items()):
             await record(conn, account, contact_id, SYSTEM, "espelho_divergente")

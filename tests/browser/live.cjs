@@ -147,7 +147,7 @@ async function eventually(fn) {
   );
   console.log("OK SSE entre sessões, rascunho preservado e movimentação");
   await fa.getByRole("button", { name: "Gerenciar funis" }).click();
-  await fa.getByRole("button", { name: "Criar funil", exact: true }).click();
+  await fa.getByRole("button", { name: "Novo funil", exact: true }).click();
   const funnelName = "Renovação teste " + stamp;
   await fa.getByLabel("Nome do funil").fill(funnelName);
   await fa.getByRole("button", { name: "Salvar", exact: true }).click();

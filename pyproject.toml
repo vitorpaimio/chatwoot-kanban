@@ -1,6 +1,6 @@
 [project]
 name = "chatwoot-kanban"
-version = "0.2.0rc1"
+version = "0.2.0rc2"
 description = "Integração de Kanban e tarefas com o Chatwoot CRM"
 requires-python = ">=3.12"
 

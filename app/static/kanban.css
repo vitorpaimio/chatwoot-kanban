@@ -695,6 +695,86 @@ th {
 .picker-menu button[aria-pressed="true"] {
   background: rgba(var(--alpha-2));
 }
+.stage-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-caption {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.stage-picker .picker-trigger {
+  gap: 10px;
+  color: rgb(var(--slate-12));
+}
+.stage-picker[open] .picker-trigger {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(var(--blue-3));
+}
+.stage-picker[open] .picker-arrow {
+  transform: rotate(180deg);
+}
+.stage-option,
+.stage-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.stage-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stage-menu {
+  width: 100%;
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stage-menu button {
+  min-height: 36px;
+  border-radius: 6px;
+  color: rgb(var(--slate-12));
+}
+.stage-menu button:focus-visible {
+  outline: none;
+  background: rgba(var(--alpha-2));
+}
+.stage-menu button[aria-selected="true"] {
+  background: rgb(var(--blue-2));
+  font-weight: 600;
+}
+.stage-check {
+  margin-left: auto;
+  color: var(--accent);
+  visibility: hidden;
+}
+.stage-menu button[aria-selected="true"] .stage-check {
+  visibility: visible;
+}
+.stage-kind {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.stage-kind.won {
+  color: rgb(var(--teal-11));
+  background: rgb(var(--teal-3));
+}
+.stage-kind.lost {
+  color: rgb(var(--ruby-11));
+  background: rgb(var(--ruby-3));
+}
+dialog.stage-dialog {
+  overflow: visible;
+}
 .deal-dialog {
   width: min(960px, 94vw);
   padding: 0;
@@ -964,4 +1044,234 @@ th {
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Gerenciar funil */
+.manage-dialog {
+  width: min(620px, 94vw);
+}
+.manage-funnel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(var(--surface-1));
+}
+.manage-funnel-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.manage-funnel-info strong {
+  font-size: 15px;
+  color: rgb(var(--slate-12));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.manage-funnel-info .muted {
+  font-size: 12px;
+}
+.manage-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.manage-section-title {
+  margin: 6px 0 -6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.manage-stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.manage-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.manage-stage:last-child {
+  border-bottom: 0;
+}
+.manage-stage:hover {
+  background: rgba(var(--alpha-2));
+}
+.manage-order {
+  display: flex;
+  flex-direction: column;
+}
+.manage-order .icon-button {
+  width: 24px;
+  height: 18px;
+  min-height: 0;
+  border-radius: 4px;
+}
+.manage-order .icon {
+  width: 14px;
+  height: 14px;
+}
+.manage-stage-name {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--slate-12));
+  font-weight: 500;
+}
+.manage-stage-name:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+.manage-stage .manage-actions {
+  opacity: 0.55;
+}
+.manage-stage:hover .manage-actions,
+.manage-stage:focus-within .manage-actions {
+  opacity: 1;
+}
+button:disabled.icon-button {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+.danger-ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+.danger-ghost:hover:not(:disabled) {
+  color: rgb(var(--ruby-11));
+  background: rgb(var(--ruby-2));
+}
+.manage-add {
+  display: flex;
+  gap: 8px;
+}
+.manage-add input {
+  flex: 1;
+  min-width: 0;
+}
+.manage-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.manage-footer button {
+  color: var(--muted);
+}
+#dialog-save.danger {
+  background: rgb(var(--ruby-9));
+  border-color: rgb(var(--ruby-9));
+  color: #fff;
+}
+#dialog-save.danger:hover {
+  background: rgb(var(--ruby-10));
+}
+.field-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.swatch {
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 0;
+  background: var(--swatch);
+}
+.swatch:hover {
+  background: var(--swatch);
+  transform: scale(1.1);
+}
+.swatch[aria-checked="true"] {
+  box-shadow:
+    0 0 0 2px rgb(var(--solid-2)),
+    0 0 0 4px var(--swatch);
+}
+.swatches input[type="color"] {
+  width: 36px;
+  height: 28px;
+  padding: 2px;
+  cursor: pointer;
+}
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgb(var(--surface-1));
+  align-self: flex-start;
+}
+.segment {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  min-height: 30px;
+  padding: 4px 14px;
+  border-radius: 6px;
+}
+.segment[aria-checked="true"] {
+  background: rgb(var(--solid-2));
+  color: rgb(var(--slate-12));
+  box-shadow: 0 1px 3px rgba(var(--black-alpha-1));
+}
+.segment.won[aria-checked="true"] {
+  color: rgb(var(--teal-11));
+}
+.segment.lost[aria-checked="true"] {
+  color: rgb(var(--ruby-11));
+}
+@media (max-width: 520px) {
+  .manage-funnel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .manage-add {
+    flex-direction: column;
+  }
+}
+#manage {
+  border-radius: 8px;
+}
+#manage:hover {
+  color: rgb(var(--slate-12));
+  background: rgba(var(--alpha-2));
+}
+#manage .icon {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.3s ease;
+}
+#manage:hover .icon {
+  transform: rotate(45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  #manage .icon {
+    transition: none;
+  }
 }

@@ -6,6 +6,24 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+## [0.2.0-rc.2] — 2026-09-25
+
+Versão candidata com etapa editável pelo Chatwoot e melhorias na gestão do funil.
+
+### Alterado
+
+- "Funil / Etapa" passa a ser uma lista no contato do Chatwoot; escolher outra
+  opção move ou cria a negociação no Kanban (ADR-039).
+- Menu de etapa da janela da negociação com cor, etapa atual e tipo (Ganho/Perdido).
+- Janela "Gerenciar funil" redesenhada: reordenar, editar, arquivar e criar etapas
+  em uma lista, com paleta de cores e tipo da etapa.
+- Ícone de engrenagem padrão no botão de gerenciar o funil.
+
+### Atualização
+
+- O comando `update` do instalador converte o atributo "Funil / Etapa" de texto
+  para lista; em instalações já prontas, o worker também faz a conversão.
+
 ## [0.2.0-rc.1] — 2026-09-24
 
 Versão candidata com assistente de instalação e correções de rede e webhook.

@@ -54,3 +54,5 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 - [ADR-037 — Gate da release 0.2.0](037-gate-release.md)
 
 - [ADR-038 — Instalação na VPS](038-instalacao-vps.md)
+
+- [ADR-039 — Funil / Etapa como lista editável](039-etapa-lista-editavel.md)

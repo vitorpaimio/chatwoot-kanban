@@ -58,6 +58,15 @@ function icon(name) {
       "M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 3.1 5.2 2 2 0 0 1 5.1 3h3a2 2 0 0 1 2 1.7l.4 2.8a2 2 0 0 1-.6 1.7L8.6 10.5a16 16 0 0 0 4.9 4.9l1.3-1.3a2 2 0 0 1 1.7-.6l2.8.4a2 2 0 0 1 2.7 3z",
     ],
     web: ["M3 3h18v18H3z", "M3 8h18", "M7 5h.01M10 5h.01"],
+    edit: ["M12 20h9", "M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"],
+    archive: ["M3 4h18v4H3z", "M5 8v12h14V8", "M10 12h4"],
+    plus: ["M12 5v14", "M5 12h14"],
+    up: ["m18 15-6-6-6 6"],
+    down: ["m6 9 6 6 6-6"],
+    settings: [
+      "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+      "M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
+    ],
     user: ["M20 21v-2a7 7 0 0 0-14 0v2", "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0"],
     instagram: [
       "M7 2h10a5 5 0 0 1 5 5v10a5 5 0 0 1-5 5H7a5 5 0 0 1-5-5V7a5 5 0 0 1 5-5z",
@@ -395,12 +404,13 @@ function selectField(label, items, value) {
   wrapper.append(input);
   return [wrapper, input];
 }
-function dialog(title, content, save) {
+function dialog(title, content, save, after) {
   dialogGeneration++;
   editing = true;
   notice("");
   document.querySelectorAll(".dialog-extra").forEach((node) => node.remove());
-  $("dialog").classList.remove("deal-dialog");
+  $("dialog").classList.remove("deal-dialog", "stage-dialog", "manage-dialog");
+  $("dialog-save").classList.remove("danger");
   $("dialog-save").textContent = "Salvar";
   $("dialog-save").disabled = false;
   $("dialog-title").textContent = title;
@@ -414,6 +424,7 @@ function dialog(title, content, save) {
       pendingRefresh = false;
       closeDialog();
       await load();
+      if (after) after();
     } catch (e) {
       showError(e);
     } finally {
@@ -557,13 +568,87 @@ function taskDialog(card) {
     $("dialog-save").before(complete);
   }
 }
+const STAGE_KINDS = { won: "Ganho", lost: "Perdido" };
+function stageOption(stage) {
+  const dot = el("span", null, "stage-dot");
+  if (/^#[0-9a-f]{6}$/i.test(stage.color || ""))
+    dot.style.backgroundColor = stage.color;
+  const parts = [dot, el("span", stage.name, "stage-option-name")];
+  const kind = STAGE_KINDS[stage.kind];
+  if (kind && kind.toLowerCase() !== stage.name.trim().toLowerCase())
+    parts.push(el("span", kind, `stage-kind ${stage.kind}`));
+  return parts;
+}
+// Menu próprio: o <select> nativo não mostra cor nem tipo da etapa.
+function stageField(stages, value) {
+  const state = { value: String(value) };
+  const wrapper = el("div", null, "stage-field");
+  const caption = el("span", "Etapa", "field-caption");
+  const root = el("details", null, "picker stage-picker");
+  const trigger = el("summary", null, "picker-trigger");
+  trigger.setAttribute("aria-label", "Etapa");
+  const current = el("span", null, "stage-option");
+  const list = el("div", null, "picker-menu stage-menu");
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", "Etapa");
+  const paint = () => {
+    const stage = stages.find((x) => String(x.id) === state.value);
+    current.replaceChildren(...(stage ? stageOption(stage) : []));
+  };
+  for (const stage of stages) {
+    const option = button("", () => {
+      state.value = String(stage.id);
+      list
+        .querySelectorAll("button")
+        .forEach((b) => b.setAttribute("aria-selected", String(b === option)));
+      paint();
+      root.open = false;
+      trigger.focus();
+    });
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", String(String(stage.id) === state.value));
+    const check = icon("check");
+    check.classList.add("stage-check");
+    option.append(...stageOption(stage), check);
+    list.append(option);
+  }
+  trigger.append(current, el("span", "⌄", "picker-arrow"));
+  root.append(trigger, list);
+  root.addEventListener("toggle", () => {
+    if (root.open)
+      (list.querySelector('[aria-selected="true"]') || list.firstChild)?.focus();
+  });
+  root.onkeydown = (event) => {
+    if (event.key === "Escape" && root.open) {
+      event.stopPropagation();
+      event.preventDefault();
+      root.open = false;
+      trigger.focus();
+    }
+    if (["ArrowDown", "ArrowUp"].includes(event.key)) {
+      event.preventDefault();
+      if (!root.open) return void (root.open = true);
+      const buttons = [...list.querySelectorAll("button")];
+      const index = buttons.indexOf(document.activeElement);
+      buttons[
+        (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) %
+          buttons.length
+      ]?.focus();
+    }
+  };
+  root.addEventListener("focusout", () =>
+    setTimeout(() => {
+      if (!root.contains(document.activeElement)) root.open = false;
+    }, 0),
+  );
+  paint();
+  wrapper.append(caption, root);
+  return [wrapper, state];
+}
 function details(card) {
   editingCardId = card.id;
-  const [stage, s] = selectField(
-    "Etapa",
-    data.stages
-      .filter((x) => x.funnel_id === card.funnel_id)
-      .map((x) => [x.id, x.name]),
+  const [stage, s] = stageField(
+    data.stages.filter((x) => x.funnel_id === card.funnel_id),
     card.stage_id,
   );
   const [value, v] = field("Valor em reais", "text", money(card.value_cents));
@@ -618,6 +703,7 @@ function details(card) {
     });
     $("dialog-save").textContent = "Excluir negociação";
   });
+  $("dialog").classList.add("stage-dialog");
   remove.className = "dialog-extra delete-deal";
   remove.title = "Excluir negociação";
   remove.setAttribute("aria-label", "Excluir negociação");
@@ -1308,136 +1394,315 @@ $("add-card").onclick = () => {
 function editFunnel(funnel) {
   const [name, n] = field("Nome do funil", "text", funnel?.name);
   n.required = true;
-  const [pos, p] = field(
-    "Ordem",
-    "number",
-    funnel?.position || data.funnels.length * 1024 + 1024,
-  );
+  n.maxLength = 100;
   const [stale, days] = field(
-    "Considerar parada após quantos dias",
+    "Considerar negociação parada após (dias)",
     "number",
     funnel?.stale_days || 7,
   );
   days.min = 1;
   days.max = 365;
   days.required = true;
-  dialog(funnel ? "Editar funil" : "Novo funil", [name, pos, stale], () =>
-    api(
-      funnel ? `/funnels/${funnel.id}` : "/funnels",
-      funnel ? "PUT" : "POST",
-      { name: n.value, position: p.value, stale_days: Number(days.value) },
-    ),
+  const last = Math.max(0, ...data.funnels.map((f) => Number(f.position)));
+  dialog(
+    funnel ? "Editar funil" : "Novo funil",
+    [name, stale],
+    () =>
+      api(
+        funnel ? `/funnels/${funnel.id}` : "/funnels",
+        funnel ? "PUT" : "POST",
+        {
+          name: n.value,
+          position: funnel ? funnel.position : last + 1024,
+          stale_days: Number(days.value),
+        },
+      ),
+    funnel ? manage : null,
   );
+}
+const STAGE_COLORS = [
+  "#6366f1", "#3b82f6", "#06b6d4", "#10b981",
+  "#84cc16", "#f59e0b", "#f97316", "#ef4444", "#ec4899", "#64748b",
+];
+// Paleta com opção livre: o seletor nativo sozinho escondia as cores comuns.
+function colorField(value) {
+  const state = { value: value || STAGE_COLORS[0] };
+  const wrapper = el("div", null, "stage-field");
+  const swatches = el("div", null, "swatches");
+  swatches.setAttribute("role", "radiogroup");
+  swatches.setAttribute("aria-label", "Cor");
+  const custom = el("input");
+  custom.type = "color";
+  custom.value = state.value;
+  custom.title = "Outra cor";
+  custom.setAttribute("aria-label", "Outra cor");
+  const mark = () =>
+    swatches.querySelectorAll("button").forEach((b) =>
+      b.setAttribute("aria-checked", String(b.dataset.color === state.value)),
+    );
+  for (const color of STAGE_COLORS) {
+    const swatch = button("", () => {
+      state.value = color;
+      custom.value = color;
+      mark();
+    });
+    swatch.className = "swatch";
+    swatch.dataset.color = color;
+    swatch.style.setProperty("--swatch", color);
+    swatch.setAttribute("role", "radio");
+    swatch.setAttribute("aria-label", color);
+    swatches.append(swatch);
+  }
+  custom.oninput = () => {
+    state.value = custom.value;
+    mark();
+  };
+  swatches.append(custom);
+  mark();
+  wrapper.append(el("span", "Cor", "field-caption"), swatches);
+  return [wrapper, state];
+}
+function kindField(value) {
+  const state = { value: value || "open" };
+  const wrapper = el("div", null, "stage-field");
+  const group = el("div", null, "segmented");
+  group.setAttribute("role", "radiogroup");
+  group.setAttribute("aria-label", "Tipo da etapa");
+  for (const [kind, label] of [
+    ["open", "Em andamento"],
+    ["won", "Ganho"],
+    ["lost", "Perdido"],
+  ]) {
+    const option = button(label, () => {
+      state.value = kind;
+      group
+        .querySelectorAll("button")
+        .forEach((b) => b.setAttribute("aria-checked", String(b === option)));
+    });
+    option.className = `segment ${kind}`;
+    option.setAttribute("role", "radio");
+    option.setAttribute("aria-checked", String(kind === state.value));
+    group.append(option);
+  }
+  wrapper.append(
+    el("span", "Tipo da etapa", "field-caption"),
+    group,
+    el("p", "Ganho e Perdido encerram a negociação; Perdido pede um motivo.", "field-hint"),
+  );
+  return [wrapper, state];
+}
+function funnelStages() {
+  return data.stages.filter((s) => s.funnel_id === selected);
+}
+function stageBody(stage, changes = {}) {
+  return {
+    name: stage.name,
+    color: stage.color,
+    kind: stage.kind,
+    position: stage.position,
+    ...changes,
+  };
 }
 function editStage(stage) {
   const [name, n] = field("Nome da etapa", "text", stage?.name);
   n.required = true;
-  const [color, c] = field(
-    "Cor",
-    "color",
-    stage?.color ||
-      "#" +
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--blue-9")
-          .trim()
-          .split(/\s+/)
-          .map((value) => Number(value).toString(16).padStart(2, "0"))
-          .join(""),
-  );
-  const [kind, k] = selectField(
-    "Classificação",
-    [
-      ["open", "Aberta"],
-      ["won", "Ganha"],
-      ["lost", "Perdida"],
-    ],
-    stage?.kind || "open",
-  );
-  const [position, p] = field(
-    "Ordem",
-    "number",
-    stage?.position ||
-      data.stages.filter((s) => s.funnel_id === selected).length * 1024 + 1024,
-  );
+  n.maxLength = 100;
+  const [color, c] = colorField(stage?.color);
+  const [kind, k] = kindField(stage?.kind);
+  const last = Math.max(0, ...funnelStages().map((s) => Number(s.position)));
   dialog(
     stage ? "Editar etapa" : "Nova etapa",
-    [name, color, kind, position],
+    [name, color, kind],
     () =>
       api(
         stage ? `/stages/${stage.id}` : `/funnels/${selected}/stages`,
         stage ? "PUT" : "POST",
-        { name: n.value, color: c.value, kind: k.value, position: p.value },
+        stageBody(stage || { position: last + 1024 }, {
+          name: n.value,
+          color: c.value,
+          kind: k.value,
+        }),
       ),
+    manage,
   );
+}
+function archiveStage(stage) {
+  const others = funnelStages().filter((s) => s.id !== stage.id);
+  const [destination, d] = selectField(
+    "Se houver negociações nesta etapa, mover para",
+    others.map((s) => [s.id, s.name]),
+  );
+  dialog(
+    `Arquivar etapa "${stage.name}"?`,
+    [
+      el("p", "A etapa sai do quadro. Negociações e histórico são preservados."),
+      destination,
+    ],
+    () =>
+      api(`/stages/${stage.id}/archive`, "POST", {
+        destination_id: Number(d.value) || null,
+      }),
+    manage,
+  );
+  $("dialog-save").textContent = "Arquivar etapa";
+  $("dialog-save").classList.add("danger");
+}
+async function moveStage(stage, step) {
+  const stages = funnelStages();
+  const index = stages.findIndex((s) => s.id === stage.id);
+  const other = stages[index + step];
+  if (!other) return;
+  let [a, b] = [Number(stage.position), Number(other.position)];
+  if (a === b) b = a + step * 1024;
+  await api(`/stages/${stage.id}`, "PUT", stageBody(stage, { position: b }));
+  await api(`/stages/${other.id}`, "PUT", stageBody(other, { position: a }));
+  // A janela continua aberta: forçar a recarga em vez de adiá-la.
+  await load(true);
+  manage();
+}
+function lossReasons() {
+  return api("/metrics/configuration").then((config) => {
+    const [reasons, input] = field(
+      "Um motivo por linha",
+      "textarea",
+      config.loss_reasons.join("\n"),
+    );
+    dialog(
+      "Motivos de perda",
+      [el("p", "\"Outro\" com descrição estará sempre disponível.", "field-hint"), reasons],
+      () =>
+        api("/metrics/configuration", "PUT", {
+          loss_reasons: input.value
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        }),
+      manage,
+    );
+  });
+}
+function iconButton(glyph, label, fn, cls = "") {
+  const node = button("", fn);
+  node.className = `icon-button ghost ${cls}`.trim();
+  node.title = label;
+  node.setAttribute("aria-label", label);
+  node.append(icon(glyph));
+  return node;
 }
 function manage() {
   const funnel = data.funnels.find((f) => f.id === selected);
   if (!funnel) return accountSettings();
-  const rows = [
-    button("Criar funil", () => editFunnel()),
-    button("Editar este funil", () => editFunnel(funnel)),
-    button("Adicionar etapa", () => editStage()),
-    button("Configuração da conta", accountSettings),
-    button("Motivos de perda", async () => {
-      const config = await api("/metrics/configuration");
-      const [reasons, input] = field(
-        "Um motivo por linha",
-        "textarea",
-        config.loss_reasons.join("\n"),
-      );
+  const stages = funnelStages();
+  const header = el("section", null, "manage-funnel");
+  const info = el("div", null, "manage-funnel-info");
+  info.append(
+    el("strong", funnel.name),
+    el(
+      "span",
+      `${stages.length} ${stages.length === 1 ? "etapa" : "etapas"} · parada após ${funnel.stale_days} dias${funnel.is_primary ? " · funil principal" : ""}`,
+      "muted",
+    ),
+  );
+  const funnelActions = el("div", null, "manage-actions");
+  const editButton = button("Editar funil", () => editFunnel(funnel));
+  editButton.prepend(icon("edit"));
+  funnelActions.append(editButton);
+  if (!funnel.is_primary) {
+    const archive = button("Arquivar", () => {
       dialog(
-        "Motivos de perda da conta",
-        [el("p", "Outro com descrição estará sempre disponível."), reasons],
-        () =>
-          api("/metrics/configuration", "PUT", {
-            loss_reasons: input.value
-              .split("\n")
-              .map((s) => s.trim())
-              .filter(Boolean),
-          }),
+        `Arquivar funil "${funnel.name}"?`,
+        [el("p", "O funil sai do quadro. Negociações e histórico são preservados.")],
+        () => api(`/funnels/${funnel.id}/archive`, "POST"),
       );
-    }),
-  ];
-  if (!funnel.is_primary)
-    rows.push(
-      button("Arquivar este funil", () =>
-        dialog(
-          "Arquivar funil",
-          [
-            el(
-              "p",
-              "Os cartões e o histórico serão preservados. O funil deixará de aparecer no quadro.",
-            ),
-          ],
-          () => api(`/funnels/${funnel.id}/archive`, "POST"),
-        ),
-      ),
-    );
-  for (const stage of data.stages.filter((s) => s.funnel_id === selected)) {
-    const row = el("div", null, "row");
-    row.append(
-      el("strong", stage.name),
-      button("Editar", () => editStage(stage)),
-      button("Arquivar", () => {
-        const [destination, d] = selectField(
-          "Mover cartões para",
-          data.stages
-            .filter((s) => s.funnel_id === selected && s.id !== stage.id)
-            .map((s) => [s.id, s.name]),
-        );
-        dialog(
-          "Arquivar etapa",
-          [destination, el("p", "O histórico será preservado.")],
-          () =>
-            api(`/stages/${stage.id}/archive`, "POST", {
-              destination_id: Number(d.value) || null,
-            }),
-        );
-      }),
-    );
-    rows.push(row);
+      $("dialog-save").textContent = "Arquivar funil";
+      $("dialog-save").classList.add("danger");
+    });
+    archive.className = "danger-ghost";
+    archive.prepend(icon("archive"));
+    funnelActions.append(archive);
   }
-  dialog("Gerenciar · " + funnel.name, rows);
+  header.append(info, funnelActions);
+
+  const list = el("ol", null, "manage-stages");
+  list.setAttribute("aria-label", "Etapas do funil");
+  stages.forEach((stage, index) => {
+    const row = el("li", null, "manage-stage");
+    const order = el("div", null, "manage-order");
+    const up = iconButton("up", "Mover para cima", () => moveStage(stage, -1));
+    const down = iconButton("down", "Mover para baixo", () => moveStage(stage, 1));
+    up.disabled = index === 0;
+    down.disabled = index === stages.length - 1;
+    order.append(up, down);
+    const name = el("button", null, "manage-stage-name");
+    name.type = "button";
+    name.title = "Editar etapa";
+    name.onclick = () => editStage(stage);
+    name.append(...stageOption(stage));
+    const actions = el("div", null, "manage-actions");
+    actions.append(iconButton("edit", `Editar ${stage.name}`, () => editStage(stage)));
+    const archive = iconButton(
+      "archive",
+      stages.length < 2 ? "O funil precisa de pelo menos uma etapa" : `Arquivar ${stage.name}`,
+      () => archiveStage(stage),
+      "danger-ghost",
+    );
+    archive.disabled = stages.length < 2;
+    actions.append(archive);
+    row.append(order, name, actions);
+    list.append(row);
+  });
+
+  // Criação rápida: nome e Enter; cor e tipo continuam editáveis depois.
+  const quick = el("div", null, "manage-add");
+  const input = el("input");
+  input.placeholder = "Nome da nova etapa";
+  input.maxLength = 100;
+  input.setAttribute("aria-label", "Nome da nova etapa");
+  const add = button("Adicionar etapa", async () => {
+    const name = input.value.trim();
+    if (!name) return input.focus();
+    add.disabled = true;
+    try {
+      const last = Math.max(0, ...stages.map((s) => Number(s.position)));
+      await api(`/funnels/${selected}/stages`, "POST", {
+        name,
+        color: STAGE_COLORS[stages.length % STAGE_COLORS.length],
+        kind: "open",
+        position: last + 1024,
+      });
+      await load(true);
+      manage();
+      $("dialog-content").querySelector(".manage-add input")?.focus();
+    } finally {
+      add.disabled = false;
+    }
+  });
+  add.className = "primary";
+  add.prepend(icon("plus"));
+  input.onkeydown = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      add.click();
+    }
+  };
+  quick.append(input, add);
+
+  const footer = el("div", null, "manage-footer");
+  const create = button("Novo funil", () => editFunnel());
+  create.prepend(icon("plus"));
+  const reasons = button("Motivos de perda", lossReasons);
+  const settings = button("Configuração da conta", accountSettings);
+  settings.prepend(icon("settings"));
+  footer.append(create, reasons, settings);
+
+  dialog("Gerenciar funil", [
+    header,
+    el("h3", "Etapas", "manage-section-title"),
+    list,
+    quick,
+    footer,
+  ]);
+  $("dialog").classList.add("manage-dialog");
 }
 $("manage").onclick = manage;
 const actionNames = {
