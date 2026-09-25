@@ -1385,7 +1385,68 @@ $("add-card").onclick = () => {
   $("dialog-save").disabled = true;
   search.focus();
 };
-function editFunnel(funnel) {
+// Lead novo vira negociação só no primeiro contato; filtro vazio aceita todas as caixas.
+function automationFields(funnel, inboxes) {
+  const section = el("fieldset", null, "automation");
+  section.append(el("legend", "Entrada automática"));
+  const toggle = el("label", null, "check-row");
+  const enabled = el("input");
+  enabled.type = "checkbox";
+  enabled.checked = Boolean(funnel?.auto_create_stage_id);
+  toggle.append(enabled, el("span", "Criar negociação quando um lead novo abrir conversa"));
+  const body = el("div", null, "automation-body");
+  const stages = funnel
+    ? data.stages.filter((s) => s.funnel_id === funnel.id && s.kind === "open")
+    : [{ id: "", name: "Novo" }];
+  const [stageLabel, stage] = selectField(
+    "Etapa de entrada",
+    stages.map((s) => [s.id, s.name]),
+    funnel?.auto_create_stage_id ?? stages[0]?.id,
+  );
+  stage.disabled = !funnel;
+  const boxes = el("div", null, "inbox-list");
+  boxes.setAttribute("role", "group");
+  boxes.setAttribute("aria-label", "Caixas de entrada");
+  const chosen = new Set(funnel?.auto_create_inboxes || []);
+  const checks = (inboxes || []).map((inbox) => {
+    const row = el("label", null, "check-row");
+    const input = el("input");
+    input.type = "checkbox";
+    input.value = inbox.id;
+    input.checked = chosen.has(inbox.id);
+    row.append(input, el("span", inbox.name));
+    boxes.append(row);
+    return input;
+  });
+  body.append(
+    stageLabel,
+    el("span", "Caixas de entrada", "automation-label"),
+    inboxes
+      ? checks.length
+        ? boxes
+        : el("p", "Nenhuma caixa de entrada encontrada.", "field-hint")
+      : el("p", "Não foi possível carregar as caixas. O filtro atual foi mantido.", "field-hint"),
+    el("p", "Nenhuma caixa marcada: vale para todas. Quem já teve negociação neste funil não recebe outra.", "field-hint"),
+  );
+  if (!funnel)
+    body.prepend(el("p", "Funil novo começa pela etapa Novo; troque depois em Editar funil.", "field-hint"));
+  const sync = () => (body.hidden = !enabled.checked);
+  enabled.onchange = sync;
+  sync();
+  section.append(toggle, body);
+  return {
+    node: section,
+    value: () => ({
+      auto_create: enabled.checked,
+      auto_create_stage_id: enabled.checked && stage.value ? Number(stage.value) : null,
+      auto_create_inboxes: inboxes
+        ? checks.filter((c) => c.checked).map((c) => Number(c.value))
+        : funnel?.auto_create_inboxes || [],
+    }),
+  };
+}
+async function editFunnel(funnel) {
+  const inboxes = await api("/inboxes").catch(() => null);
   const [name, n] = field("Nome do funil", "text", funnel?.name);
   n.required = true;
   n.maxLength = 100;
@@ -1397,10 +1458,11 @@ function editFunnel(funnel) {
   days.min = 1;
   days.max = 365;
   days.required = true;
+  const automation = automationFields(funnel, inboxes);
   const last = Math.max(0, ...data.funnels.map((f) => Number(f.position)));
   dialog(
     funnel ? "Editar funil" : "Novo funil",
-    [name, stale],
+    [name, stale, automation.node],
     () =>
       api(
         funnel ? `/funnels/${funnel.id}` : "/funnels",
@@ -1409,6 +1471,7 @@ function editFunnel(funnel) {
           name: n.value,
           position: funnel ? funnel.position : last + 1024,
           stale_days: Number(days.value),
+          ...automation.value(),
         },
       ),
     funnel ? manage : null,
@@ -1583,6 +1646,13 @@ function iconButton(glyph, label, fn, cls = "") {
   node.append(icon(glyph));
   return node;
 }
+function automationSummary(funnel, stages) {
+  const stage = stages.find((s) => s.id === funnel.auto_create_stage_id);
+  if (!stage) return "Entrada automática desligada";
+  const count = funnel.auto_create_inboxes.length;
+  const scope = count ? `${count} ${count === 1 ? "caixa" : "caixas"}` : "todas as caixas";
+  return `Entrada automática em ${stage.name} · ${scope}`;
+}
 function manage() {
   const funnel = data.funnels.find((f) => f.id === selected);
   if (!funnel) return accountSettings();
@@ -1596,6 +1666,7 @@ function manage() {
       `${stages.length} ${stages.length === 1 ? "etapa" : "etapas"} · parada após ${funnel.stale_days} dias${funnel.is_primary ? " · funil principal" : ""}`,
       "muted",
     ),
+    el("span", automationSummary(funnel, stages), "muted"),
   );
   const funnelActions = el("div", null, "manage-actions");
   const editButton = button("Editar funil", () => editFunnel(funnel));

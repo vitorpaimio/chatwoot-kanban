@@ -21,6 +21,7 @@ from app.provisioning.attributes import AttributeConflictError
 from app.recovery import import_one, reconcile_one
 from app.services import (
     SYSTEM,
+    create_automatic_cards,
     projection,
     refresh_contact,
     setup_account,
@@ -89,6 +90,13 @@ async def process_delivery(conn, cw, row):
                     await refresh_contact(
                         conn, cw, row["contact_id"], apply_remote=True
                     )
+                    if row["event_type"] == "conversation_created":
+                        await create_automatic_cards(
+                            conn,
+                            cw.account,
+                            row["contact_id"],
+                            (row["payload"] or {}).get("inbox_id"),
+                        )
                 await conn.execute(
                     "UPDATE kb_deliveries SET "
                     "status='processed',processed_at=now(),error=NULL WHERE id=$1",

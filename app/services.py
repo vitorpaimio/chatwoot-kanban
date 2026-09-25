@@ -6,6 +6,7 @@ from app.provisioning.attributes import provision_attributes, remember_resource
 
 SYSTEM = {"id": None, "name": "Sistema"}
 CHATWOOT = {"id": None, "name": "Chatwoot"}
+AUTOMATION = {"id": None, "name": "Criação automática"}
 STAGE_ATTRIBUTE = "kanban_etapa"
 REMOTE_LOSS_REASON = "Outro: etapa alterada no atributo do contato"
 DEFAULT_STAGES = [
@@ -213,6 +214,57 @@ async def apply_remote_stage(conn, account: int, contact_id: int, value) -> bool
         target["stage_id"],
     )
     return True
+
+
+async def create_automatic_cards(
+    conn, account: int, contact_id: int, inbox_id: int | None
+) -> list[int]:
+    """Abre negociações para um lead novo nos funis com criação automática.
+
+    Só vale para o primeiro contato: um funil em que o contato já teve
+    negociação, inclusive excluída, não recebe outra. Deve rodar com o bloqueio
+    do contato e depois de o contato existir em ``kb_contacts``.
+
+    Returns:
+        Identificadores dos cartões criados.
+    """
+    funnels = await conn.fetch(
+        """SELECT f.id AS funnel_id,s.id AS stage_id FROM kb_funnels f
+        JOIN kb_stages s ON (s.account_id,s.funnel_id,s.id)=
+        (f.account_id,f.id,f.auto_create_stage_id) WHERE f.account_id=$1
+        AND NOT f.archived AND NOT s.archived AND s.kind='open'
+        AND (cardinality(f.auto_create_inboxes)=0 OR $2=ANY(f.auto_create_inboxes))
+        AND NOT EXISTS (SELECT 1 FROM kb_cards c WHERE c.account_id=f.account_id
+        AND c.funnel_id=f.id AND c.contact_id=$3)
+        ORDER BY f.is_primary DESC,f.position,f.id""",
+        account,
+        inbox_id,
+        contact_id,
+    )
+    created = []
+    for funnel in funnels:
+        card_id = await conn.fetchval(
+            """INSERT INTO kb_cards(account_id,contact_id,funnel_id,stage_id,
+            conversation_id,conversation_inbox_id)
+            SELECT $1,$2,$3,$4,conversation_id,inbox_id FROM kb_contacts
+            WHERE account_id=$1 AND contact_id=$2 RETURNING id""",
+            account,
+            contact_id,
+            funnel["funnel_id"],
+            funnel["stage_id"],
+        )
+        await record(
+            conn,
+            account,
+            contact_id,
+            AUTOMATION,
+            "cartao_criado",
+            after={"card_id": card_id, "lost_reason": None, "automatico": True},
+            funnel=funnel["funnel_id"],
+            stage=funnel["stage_id"],
+        )
+        created.append(card_id)
+    return created
 
 
 async def refresh_contact(conn, cw, contact_id, project_cards=True, apply_remote=False):

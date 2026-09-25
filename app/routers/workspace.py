@@ -6,6 +6,7 @@ import json
 import time
 from datetime import date
 from decimal import Decimal
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -40,6 +41,14 @@ class Funnel(Input):
     name: str = Field(min_length=1, max_length=100)
     position: Decimal = Decimal(1024)
     stale_days: int = Field(default=7, ge=1, le=365)
+
+
+class FunnelSettings(Funnel):
+    auto_create: bool = False
+    auto_create_stage_id: int | None = Field(default=None, gt=0)
+    auto_create_inboxes: list[Annotated[int, Field(gt=0)]] = Field(
+        default_factory=list, max_length=500
+    )
 
 
 class Stage(Funnel):
@@ -204,8 +213,55 @@ async def board(
     return {**page, "funnel_id": funnel_id}
 
 
+async def automation_stage(conn, account, funnel_id, body: FunnelSettings):
+    """Valida a etapa de entrada; sem escolha, usa a primeira etapa aberta."""
+    if not body.auto_create:
+        return None
+    stage = await conn.fetchval(
+        """SELECT id FROM kb_stages WHERE account_id=$1 AND funnel_id=$2
+        AND NOT archived AND kind='open' AND ($3::bigint IS NULL OR id=$3)
+        ORDER BY position,id LIMIT 1""",
+        account,
+        funnel_id,
+        body.auto_create_stage_id,
+    )
+    if not stage:
+        raise HTTPException(
+            422, "Escolha uma etapa em andamento deste funil para a criação automática"
+        )
+    return stage
+
+
+async def disable_automation(conn, account, stage_id):
+    """Etapa arquivada ou encerrada deixa de receber novos leads."""
+    await conn.execute(
+        """UPDATE kb_funnels SET auto_create_stage_id=NULL WHERE account_id=$1
+        AND auto_create_stage_id=$2""",
+        account,
+        stage_id,
+    )
+
+
+@router.get("/inboxes")
+async def inboxes(user=AUTH):
+    administrator(user)
+    async with connection(user) as conn:
+        await agent(conn, user)
+        try:
+            async with await Chatwoot.for_account(conn, user["account"]) as cw:
+                result = await cw.request("GET", "/inboxes")
+        except httpx.HTTPError:
+            raise HTTPException(
+                502, "Não foi possível consultar as caixas de entrada no Chatwoot"
+            ) from None
+    return [
+        {"id": row["id"], "name": row["name"], "channel_type": row.get("channel_type")}
+        for row in result.get("payload", [])
+    ]
+
+
 @router.post("/funnels")
-async def create_funnel(body: Funnel, user=AUTH):
+async def create_funnel(body: FunnelSettings, user=AUTH):
     administrator(user)
     async with connection(user) as conn, conn.transaction():
         await agent(conn, user)
@@ -229,6 +285,14 @@ async def create_funnel(body: Funnel, user=AUTH):
             user["account"],
             fid,
         )
+        await conn.execute(
+            """UPDATE kb_funnels SET auto_create_stage_id=$3,auto_create_inboxes=$4
+            WHERE account_id=$1 AND id=$2""",
+            user["account"],
+            fid,
+            await automation_stage(conn, user["account"], fid, body),
+            sorted(set(body.auto_create_inboxes)),
+        )
         await record(
             conn,
             user["account"],
@@ -243,14 +307,16 @@ async def create_funnel(body: Funnel, user=AUTH):
 
 
 @router.put("/funnels/{funnel_id}")
-async def edit_funnel(funnel_id: int, body: Funnel, user=AUTH):
+async def edit_funnel(funnel_id: int, body: FunnelSettings, user=AUTH):
     administrator(user)
     async with connection(user) as conn, conn.transaction():
+        stage = await automation_stage(conn, user["account"], funnel_id, body)
         require(
             await conn.fetchval(
                 (
                     """
-        UPDATE kb_funnels SET name=$3,position=$4,stale_days=$5 WHERE account_id=$1 AND
+        UPDATE kb_funnels SET name=$3,position=$4,stale_days=$5,
+        auto_create_stage_id=$6,auto_create_inboxes=$7 WHERE account_id=$1 AND
         id=$2 AND NOT archived RETURNING id
         """
                 ),
@@ -259,6 +325,8 @@ async def edit_funnel(funnel_id: int, body: Funnel, user=AUTH):
                 body.name,
                 body.position,
                 body.stale_days,
+                stage,
+                sorted(set(body.auto_create_inboxes)),
             )
         )
         await record(
@@ -397,6 +465,8 @@ async def edit_stage(stage_id: int, body: Stage, user=AUTH):
                 body.position,
             )
         )
+        if body.kind != "open":
+            await disable_automation(conn, user["account"], stage_id)
         await record(
             conn,
             user["account"],
@@ -504,6 +574,7 @@ async def archive_stage(stage_id: int, body: Archive, user=AUTH):
             account,
             stage_id,
         )
+        await disable_automation(conn, account, stage_id)
         await record(
             conn,
             account,
