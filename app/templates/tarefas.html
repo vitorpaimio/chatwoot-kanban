@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Tarefas · Pipeline</title>
+    <link rel="stylesheet" href="/kanban/static/kanban.css" />
+    <link rel="stylesheet" href="/kanban/static/paginas.css" />
+    <script src="/kanban/static/theme.js" defer></script>
+    <script src="/kanban/static/helpers.js" defer></script>
+    <script src="/kanban/static/tarefas.js" defer></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Tarefas</h1>
+    </header>
+    <main class="page-content">
+      <p class="page-description">
+        Tarefas abertas das negociações desta conta, da mais antiga para a mais
+        distante. Selecione uma tarefa para abrir a negociação no Kanban.
+      </p>
+      <div class="tabs" role="tablist" aria-label="Filtrar tarefas">
+        <button role="tab" data-state="" aria-selected="true">
+          Todas <span data-count="total"></span>
+        </button>
+        <button role="tab" data-state="overdue" aria-selected="false">
+          Vencidas <span data-count="overdue"></span>
+        </button>
+        <button role="tab" data-state="today" aria-selected="false">
+          Vencem hoje <span data-count="today"></span>
+        </button>
+        <button role="tab" data-state="active" aria-selected="false">
+          Agendadas <span data-count="active"></span>
+        </button>
+      </div>
+      <p id="status" class="page-status" role="status"></p>
+      <table id="tasks" class="list-table" hidden>
+        <thead>
+          <tr>
+            <th scope="col">Tarefa</th>
+            <th scope="col">Negociação</th>
+            <th scope="col">Vencimento</th>
+            <th scope="col">Responsável</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button id="more" type="button" hidden>Carregar mais</button>
+    </main>
+  </body>
+</html>

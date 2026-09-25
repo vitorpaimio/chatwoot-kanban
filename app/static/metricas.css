@@ -1,59 +1,126 @@
-.header-context,
+/* Métricas no padrão do Chatwoot 4.18: cartões CardLayout (solid-2 com contorno
+   border-container), botões sm de 32 px e títulos de seção de 16 px/500. */
 #metrics-status,
 .period-caption,
 .metrics-footer,
 .metric-note {
   color: var(--muted);
   font-size: 12px;
+  line-height: 18px;
 }
-#metrics-status {
-  margin-left: auto;
+.header-actions #refresh[aria-busy="true"] .icon {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .metrics-filters {
   display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 24px 0;
+}
+.metrics-filters:not(.ready) .metrics-toolbar {
+  visibility: hidden;
+}
+.metrics-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+/* Na barra de Métricas os filtros começam à esquerda: o menu abre para a direita. */
+.metrics-toolbar .filter-menu {
+  left: 0;
+  right: auto;
+}
+.metrics-toolbar .filter.fixed .filter-trigger {
+  color: rgb(var(--slate-12));
+  background: rgb(var(--surface-1));
+  border-color: var(--line);
+}
+.custom-range {
+  display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 20px 24px 12px;
-  border-bottom: 1px solid var(--line);
 }
-.metrics-filters label {
+.custom-range[hidden] {
+  display: none;
+}
+/* Datas no estilo Input do Chatwoot: rótulo 14 px/500, campo de 40 px. */
+.date-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--muted);
-  min-width: 150px;
-}
-.metrics-filters select,
-.metrics-filters input {
+  gap: 4px;
   font-size: 14px;
-  height: 36px;
-  max-width: 260px;
+  font-weight: 500;
   color: rgb(var(--slate-12));
 }
+.date-field input {
+  width: 180px;
+  height: 40px;
+  padding: 0 12px;
+  font-weight: 400;
+  background: rgba(var(--black-alpha-2));
+  border-color: rgb(var(--border-weak));
+  color-scheme: inherit;
+}
+.date-field input:hover {
+  border-color: rgb(var(--slate-6));
+}
 .period-caption {
-  margin: 12px 24px;
+  margin: 12px 24px 0;
+}
+#comparison-note {
+  margin-top: 2px;
 }
 .metrics-page {
-  padding: 4px 24px 24px;
+  padding: 16px 24px 24px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 32px;
 }
 .block-heading {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
-.block-heading h2 {
+.block-heading h2,
+.metric-block > h2 {
   font-size: 16px;
+  line-height: 24px;
   font-weight: 500;
   margin: 0;
 }
-.block-heading .export {
+.metric-block > h2 {
+  margin-bottom: 12px;
+}
+/* Exportar CSV: Button ghost slate sm com ícone download. */
+.metric-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
   margin-left: auto;
-  font-size: 12px;
+  padding: 0 12px;
+  border-radius: 8px;
+  color: rgb(var(--slate-12));
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.metric-action:hover {
+  background: rgba(var(--alpha-2));
+}
+.metric-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.metric-action[hidden] {
+  display: none;
 }
 .block-body {
   display: flex;
@@ -63,55 +130,84 @@
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  gap: 16px;
+}
+.metric-kpi,
+.metric-panel,
+.table-wrap,
+.empty-state {
+  background: rgb(var(--solid-2));
+  outline: 1px solid rgba(var(--border-container));
+  outline-offset: -1px;
+  border-radius: 12px;
+  min-width: 0;
 }
 .metric-kpi,
 .metric-panel {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
   padding: 20px;
-  box-shadow: 0 1px 2px rgba(var(--black-alpha-2));
-  min-width: 0;
 }
 .metric-kpi {
-  min-height: 135px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.metric-kpi p {
+  margin: 0;
 }
 .kpi-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   color: var(--muted);
-  font-size: 13px;
-  margin: 0 0 14px;
+  font-size: 14px;
+  line-height: 20px;
+  margin-bottom: 8px !important;
 }
 .definition {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
   padding: 0;
-  min-height: 16px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  color: var(--muted);
-  font-size: 11px;
+  border: 0;
+  border-radius: 6px;
+  color: rgb(var(--slate-10));
   background: transparent;
 }
+.definition:hover {
+  color: rgb(var(--slate-12));
+}
+.definition .icon {
+  width: 14px;
+  height: 14px;
+}
 .kpi-value {
-  font-size: 25px;
+  font-size: 24px;
   line-height: 32px;
-  font-weight: 600;
-  margin: 0 0 8px;
+  font-weight: 500;
+  color: rgb(var(--slate-12));
 }
 .kpi-secondary {
-  font-size: 15px;
+  font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
-  margin: 0 0 8px;
+}
+.kpi-hint {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
 }
 .change {
-  display: inline-block;
-  font-size: 11px;
-  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 18px;
   color: var(--muted);
   white-space: nowrap;
+}
+.change .icon {
+  width: 14px;
+  height: 14px;
 }
 .change.good {
   color: rgb(var(--teal-11));
@@ -124,17 +220,31 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
+.metric-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
 .metric-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 14px;
+  line-height: 20px;
   font-weight: 500;
-  margin: 0 0 16px;
+  margin: 0;
+}
+.metric-panel > p {
+  margin: 0;
+}
+.metric-panel .table-wrap {
+  outline: 0;
+  background: transparent;
+  border-radius: 0;
 }
 .chart-wrap {
   position: relative;
   height: 260px;
-}
-.chart-wrap.small {
-  height: 220px;
 }
 .chart-wrap canvas {
   width: 100% !important;
@@ -145,72 +255,157 @@
 }
 .metrics-table {
   width: 100%;
-  font-size: 13px;
+  border-collapse: collapse;
 }
 .metrics-table th {
+  padding: 8px 16px 8px 0;
+  text-align: left;
   color: var(--muted);
   font-weight: 500;
   white-space: nowrap;
-}
-.metrics-table th button {
-  padding: 0;
-  min-height: 24px;
-  border: 0;
-  background: transparent;
-  font-size: 12px;
+  border-bottom: 1px solid var(--line);
 }
 .metrics-table td {
-  padding: 12px 9px;
+  padding: 12px 16px 12px 0;
   vertical-align: top;
+  line-height: 20px;
+  border-bottom: 1px solid var(--line);
 }
-.metrics-table td .change {
-  display: block;
+.metrics-table :is(th, td):first-child {
+  padding-left: 16px;
+}
+.metrics-table :is(th, td).numeric {
+  text-align: right;
 }
 .metrics-table tr:last-child td {
   border-bottom: 0;
 }
+.metrics-table td .change {
+  justify-content: flex-end;
+}
+.sort {
+  gap: 4px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-weight: 500;
+}
+.sort:hover {
+  background: transparent;
+  color: rgb(var(--slate-12));
+}
+.sort.has-help .sort-label {
+  text-decoration: underline dotted;
+  text-underline-offset: 4px;
+  text-decoration-color: rgb(var(--slate-8));
+  cursor: help;
+}
+th[aria-sort] .sort {
+  color: rgb(var(--slate-12));
+}
+.sort-icon {
+  width: 14px;
+  height: 14px;
+}
 .chart-empty {
   min-height: 100px;
+  margin: 0;
   display: grid;
   place-content: center;
   text-align: center;
   color: var(--muted);
   font-size: 14px;
   padding: 20px;
-  line-height: 22px;
+  line-height: 21px;
+}
+/* Estado vazio no padrão EmptyStateLayout: título, texto e ação centralizados. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 24px;
+  text-align: center;
+}
+.empty-state h3 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+}
+.empty-state p {
+  margin: 0;
+  max-width: 520px;
+  color: var(--muted);
+  line-height: 21px;
+}
+.empty-state button {
+  margin-top: 8px;
+  height: 32px;
+  padding: 0 12px;
 }
 .metric-link {
+  min-height: 0;
   color: rgb(var(--blue-11));
   border: 0;
   background: transparent;
   white-space: normal;
   text-align: left;
   padding: 0;
-  font-size: 13px;
+  font-size: 14px;
+}
+.metric-link:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+.stale-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  line-height: 20px;
+}
+.muted {
+  color: var(--muted);
+}
+/* Avisos no padrão Banner: fundo -3, borda -4, texto -11, rounded-xl. */
+.metrics-error,
+.drop-note {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 20px;
 }
 .metrics-error {
   color: rgb(var(--ruby-11));
-  background: rgb(var(--ruby-2));
-  padding: 16px;
-  border-radius: 8px;
+  background: rgb(var(--ruby-3));
+  outline: 1px solid rgb(var(--ruby-4));
+}
+#filter-warning {
+  margin: 12px 24px 0;
 }
 .drop-note {
-  background: rgb(var(--amber-2));
   color: rgb(var(--amber-11));
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 13px;
+  background: rgb(var(--amber-3));
+  outline: 1px solid rgb(var(--amber-4));
 }
 .metric-note {
-  margin: 4px 0;
-  line-height: 20px;
+  margin: 0;
 }
 .metrics-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding: 0 24px 24px;
+}
+.metrics-footer p {
+  margin: 0;
 }
 .skeleton {
   background: rgb(var(--slate-3));
-  border-radius: 10px;
+  border-radius: 12px;
   min-height: 160px;
   animation: pulse 1.1s ease-in-out infinite alternate;
 }
@@ -220,7 +415,8 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .skeleton {
+  .skeleton,
+  .header-actions #refresh[aria-busy="true"] .icon {
     animation: none;
   }
 }
@@ -234,10 +430,10 @@
 }
 @media (max-width: 520px) {
   .metrics-page {
-    padding: 4px 12px 20px;
+    padding: 16px 12px 20px;
   }
   .metrics-filters {
-    padding: 12px;
+    padding: 12px 12px 0;
   }
   .kpi-grid {
     grid-template-columns: 1fr;
@@ -245,7 +441,7 @@
   .page-header {
     padding: 0 12px;
   }
-  .header-context {
+  #metrics-status {
     display: none;
   }
 }

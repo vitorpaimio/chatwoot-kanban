@@ -9,48 +9,56 @@
     <script src="/kanban/static/theme.js" defer></script>
     <script src="/kanban/static/vendor/chart.umd.js" defer></script>
     <script src="/kanban/static/helpers.js" defer></script>
+    <script src="/kanban/static/ui.js" defer></script>
     <script src="/kanban/static/metricas.js" defer></script>
   </head>
   <body>
     <header class="page-header">
       <h1>Métricas</h1>
-      <span class="header-context">Pipeline</span
-      ><span id="metrics-status" role="status"></span
-      ><button id="refresh" class="ghost">Atualizar</button>
+      <div class="header-actions">
+        <span id="metrics-status" role="status"></span>
+        <button id="refresh" type="button" class="header-button ghost">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+            <path d="M8 16H3v5" />
+          </svg>
+          Atualizar
+        </button>
+      </div>
     </header>
-    <form id="filters" class="metrics-filters">
-      <label
-        >Funil<select id="funnel-filter">
-          <option value="">Todos os funis</option>
-        </select></label
-      >
-      <label
-        >Período<select id="period">
+    <form id="filters" class="metrics-filters" aria-label="Filtros">
+      <div class="metrics-toolbar">
+        <select id="funnel-filter" aria-label="Funil">
+          <option value="">Funil</option>
+        </select>
+        <select id="period" aria-label="Período">
           <option value="today">Hoje</option>
           <option value="yesterday">Ontem</option>
-          <option value="7days">7 dias</option>
+          <option value="7days">Últimos 7 dias</option>
           <option value="month" selected>Este mês</option>
           <option value="last-month">Mês passado</option>
           <option value="custom">Personalizado</option>
-        </select></label
-      >
-      <label id="start-label" hidden
-        >De<input id="start" type="date" required /></label
-      ><label id="end-label" hidden
-        >Até<input id="end" type="date" required
-      /></label>
-      <label
-        >Responsável<select id="assignee-filter">
-          <option value="">Todos os responsáveis</option>
-        </select></label
-      >
-      <label
-        >Caixa de entrada<select id="inbox-filter">
-          <option value="">Todas as caixas</option>
-        </select></label
-      >
+        </select>
+        <select id="assignee-filter" aria-label="Responsável">
+          <option value="">Responsável</option>
+        </select>
+        <select id="inbox-filter" aria-label="Caixa de entrada">
+          <option value="">Caixa de entrada</option>
+        </select>
+      </div>
+      <div id="custom-range" class="custom-range" hidden>
+        <label class="date-field"
+          >De<input id="start" type="date" required
+        /></label>
+        <label class="date-field"
+          >Até<input id="end" type="date" required
+        /></label>
+      </div>
     </form>
     <p id="period-caption" class="period-caption"></p>
+    <p id="comparison-note" class="period-caption" hidden></p>
     <p id="filter-warning" class="metrics-error" role="alert" hidden></p>
     <main id="metrics" class="metrics-page">
       <section id="summary" class="metric-block" aria-label="Resumo"></section>
@@ -60,8 +68,11 @@
         class="metric-block"
         aria-label="Motivos de perda"
       ></section>
-      <section id="sources" class="metric-block" aria-label="Origem"></section>
-      <p class="metric-note">Indicadores de atendimento estão nos relatórios do Chatwoot.</p>
+      <section
+        id="sources"
+        class="metric-block"
+        aria-label="Origem e campanha"
+      ></section>
       <section id="team" class="metric-block" aria-label="Equipe"></section>
       <section id="tasks" class="metric-block" aria-label="Tarefas"></section>
       <section
@@ -71,9 +82,15 @@
       ></section>
     </main>
     <footer class="metrics-footer">
-      Horários de Brasília. Os valores históricos usam os eventos registrados.
-      Dados anteriores à instalação podem ter dimensões ou valores
-      desconhecidos.
+      <p>
+        Horários de Brasília. Os valores históricos usam os eventos registrados;
+        dados anteriores à instalação podem ter dimensões ou valores
+        desconhecidos.
+      </p>
+      <p>
+        Indicadores de atendimento, como conversas e tempo de resposta, estão
+        nos Relatórios do Chatwoot.
+      </p>
     </footer>
   </body>
 </html>

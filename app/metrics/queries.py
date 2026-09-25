@@ -1,4 +1,8 @@
-"""Agregações temporais no PostgreSQL; limites de data são semiabertos."""
+"""Agregações temporais no PostgreSQL; limites de data são semiabertos.
+
+A taxa de tarefas no prazo devolve nulo quando nenhuma tarefa foi concluída, para
+a interface mostrar "—" em vez de um 0% enganoso.
+"""
 
 BASE = """
 WITH snapshot AS (
@@ -61,9 +65,9 @@ SELECT count(*) FILTER(WHERE closed_at IS NULL OR closed_at >=$3) AS open,
  (least($3-interval '1 microsecond',now())
  AT TIME ZONE 'America/Sao_Paulo')::date) AS overdue,
  count(*) FILTER(WHERE closed_at >=$2 AND closed_at<$3) AS completed,
- coalesce(100.0*count(*) FILTER(WHERE closed_at >=$2 AND closed_at<$3 AND
+ 100.0*count(*) FILTER(WHERE closed_at >=$2 AND closed_at<$3 AND
  (closed_at AT TIME ZONE 'America/Sao_Paulo')::date<=due_date)/nullif(count(*)
- FILTER(WHERE closed_at >=$2 AND closed_at<$3),0),0) AS on_time_rate
+ FILTER(WHERE closed_at >=$2 AND closed_at<$3),0) AS on_time_rate
 FROM task_scope
 """
 )
@@ -77,7 +81,7 @@ FUNNEL = (
  SELECT e.*,lead(created_at) OVER(PARTITION BY card_id ORDER BY created_at,id) AS
  exited_at FROM entries e
 )
-SELECT s.id,s.funnel_id,f.name AS funnel,s.name,s.position,
+SELECT s.id,s.funnel_id,f.name AS funnel,s.name,s.position,s.color,s.kind,
  count(co.card_id) AS quantity,coalesce(sum(co.value_cents),0) AS value,
  coalesce(100.0*count(co.card_id) FILTER(WHERE EXISTS(
  SELECT 1 FROM kb_card_events later WHERE later.account_id=$1 AND

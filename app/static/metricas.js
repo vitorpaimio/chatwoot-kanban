@@ -1,58 +1,68 @@
 (() => {
   const $ = (id) => document.getElementById(id),
-    { money, dateBR } = window.KanbanHelpers;
+    { money, dateBR } = window.KanbanHelpers,
+    { filterMenu } = window.PipelineUI;
   const url = new URL(location.href),
     account = url.searchParams.get("account");
   const names = {
     summary: "Resumo",
     funnel: "Funil",
     losses: "Motivos de perda",
-    sources: "Origem",
+    sources: "Origem e campanha",
     team: "Equipe",
     tasks: "Tarefas",
     timeline: "Evolução",
   };
+  // Glossário do Pipeline: "negociação" é o cartão do quadro (UX-50).
   const definitions = {
-    leads: "Lead novo: card criado no período.",
-    ongoing: "Em andamento: cards em etapas kind=open no fim do período.",
-    wins: "Ganho: card que entrou numa etapa kind=won no período.",
+    leads: "Negociações criadas no período.",
+    ongoing: "Negociações em etapas abertas no fim do período.",
+    wins: "Negociações que entraram numa etapa de ganho no período.",
     revenue:
-      "Receita: soma do valor dos ganhos no momento de entrada na etapa ganha.",
-    losses: "Perdido: card que entrou numa etapa kind=lost no período.",
-    win_rate: "Taxa de ganho: ganhos / (ganhos + perdidos) do período.",
-    average_ticket:
-      "Ticket médio: soma do valor dos ganhos / número de ganhos.",
-    open_value: "Valor em aberto: soma do valor dos cards em andamento.",
+      "Soma do valor das negociações ganhas, no momento em que entraram na etapa de ganho.",
+    losses: "Negociações que entraram numa etapa de perda no período.",
+    win_rate: "Ganhos divididos por ganhos mais perdidos no período.",
+    average_ticket: "Receita dividida pelo número de ganhos.",
+    open_value: "Soma do valor das negociações em etapas abertas.",
     cycle_days:
-      "Ciclo médio: média de (data do ganho - data de criação) dos ganhos do período.",
+      "Tempo médio entre a criação da negociação e o ganho, nos ganhos do período.",
     conversion:
-      "Dos cards que entraram na etapa X no período, percentual que depois entrou em qualquer etapa posterior do mesmo funil, observado até agora.",
+      "Das negociações que entraram na etapa no período, quantas passaram depois por qualquer etapa seguinte do mesmo funil, até hoje.",
     next_conversion:
-      "Dos cards que entraram nesta etapa no período, percentual que depois entrou na próxima etapa.",
+      "Das negociações que entraram na etapa no período, quantas passaram depois pela etapa seguinte.",
     dwell_days:
-      "Tempo médio na etapa: média da permanência encerrada no período, calculada pelos eventos de movimento.",
+      "Tempo médio que as negociações ficaram na etapa, nas saídas do período.",
     stale:
-      "Card parado: sem movimento nem tarefa concluída há mais de N dias, configurado por funil (padrão 7).",
-    service_open:
-      "Conversas abertas agora no Chatwoot, com cache de até 5 minutos.",
-    unanswered:
-      "Conversas abertas aguardando resposta ou sem primeira resposta.",
+      "Negociações sem movimento nem tarefa concluída há mais dias que o limite do funil (padrão: 7).",
     open: "Tarefas abertas no fim do período.",
-    overdue:
-      "Tarefas abertas que já passaram da data de vencimento, em Brasília.",
+    overdue: "Tarefas abertas com vencimento já passado, no horário de Brasília.",
     on_time_rate:
-      "Tarefas concluídas no prazo / tarefas concluídas no período.",
+      "Tarefas concluídas até o vencimento, divididas pelas tarefas concluídas no período.",
     completed: "Tarefas concluídas no período.",
-    conversations: "Conversas criadas no período no Chatwoot.",
-    first_response_seconds:
-      "Média dos tempos de primeira resposta nos eventos do Chatwoot no período.",
-    resolution_seconds:
-      "Média dos tempos de resolução nos eventos do Chatwoot no período.",
   };
+  // Traços do Lucide (download, info, arrow-up, arrow-down, trending).
+  const ICONS = {
+    download: ["M12 15V3", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "m7 10 5 5 5-5"],
+    info: ["M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0", "M12 16v-4", "M12 8h.01"],
+    up: ["m5 12 7-7 7 7", "M12 19V5"],
+    down: ["M12 5v14", "m19 12-7 7-7-7"],
+    rise: ["M16 7h6v6", "m22 7-8.5 8.5-5-5L2 17"],
+    fall: ["M16 17h6v-6", "m22 17-8.5-8.5-5 5L2 7"],
+  };
+  const lowerIsBetter = new Set([
+    "losses",
+    "cycle_days",
+    "overdue",
+    "overdue_tasks",
+    "dwell_days",
+  ]);
   const charts = new Map(),
-    loaded = new Map();
+    loaded = new Map(),
+    // Comparações exibidas e omitidas por bloco, para a nota única (UX-42).
+    comparisons = new Map();
   let generation = 0,
     configuration = {},
+    administrator = false,
     source,
     debounce;
   const el = (tag, text, cls) => {
@@ -61,60 +71,98 @@
     if (cls) n.className = cls;
     return n;
   };
+  const icon = (name, cls = "icon") => {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", cls);
+    svg.setAttribute("aria-hidden", "true");
+    for (const d of ICONS[name]) {
+      const path = document.createElementNS(svg.namespaceURI, "path");
+      path.setAttribute("d", d);
+      svg.append(path);
+    }
+    return svg;
+  };
   const num = (n) =>
     n == null
-      ? "sem dados"
+      ? "—"
       : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
-  const pct = (n) => (n == null ? "sem dados" : num(n) + "%");
+  const PERCENT = ["win_rate", "on_time_rate", "conversion", "next_conversion"];
   const format = (key, value) =>
     value == null
-      ? "sem dados"
+      ? "—"
       : ["revenue", "average_ticket", "open_value", "value"].includes(key)
         ? money(value)
-        : [
-              "win_rate",
-              "on_time_rate",
-              "conversion",
-              "next_conversion",
-            ].includes(key)
-          ? pct(value)
+        : PERCENT.includes(key)
+          ? num(value) + "%"
           : key.endsWith("_days")
             ? Number(value) > 0 && Number(value) < 1
               ? num(Number(value) * 1440) + " min"
               : num(value) + " dias"
-            : key.endsWith("_seconds")
-              ? num(Number(value) / 60) + " min"
-              : num(value);
+            : num(value);
   const color = (token) =>
     `rgb(${getComputedStyle(document.documentElement)
       .getPropertyValue("--" + token)
       .trim()})`;
-  function tooltip(key) {
-    const b = el("button", "?", "definition");
+  const stageColor = (row) =>
+    /^#[\da-f]{6}$/i.test(row.color || "") ? row.color : color("blue-9");
+  function help(key, label) {
+    const b = el("button", null, "definition");
     b.type = "button";
     b.title = definitions[key] || key;
-    b.setAttribute("aria-label", b.title);
+    b.setAttribute("aria-label", `${label}: ${b.title}`);
+    b.append(icon("info"));
     return b;
   }
+  // Variação percentual; sem valor anterior (nulo ou zero) não há comparação.
   function delta(current, previous) {
-    return current == null || previous == null
-      ? null
-      : previous === 0
-        ? current === 0
-          ? 0
-          : null
-        : ((current - previous) / Math.abs(previous)) * 100;
+    if (current == null || previous == null || Number(previous) === 0)
+      return null;
+    return ((current - previous) / Math.abs(previous)) * 100;
   }
-  function variation(value, lower = false) {
-    const n = el(
-      "span",
-      value == null
-        ? "sem dados no período anterior"
-        : `${value > 0 ? "↑" : value < 0 ? "↓" : "→"} ${num(Math.abs(value))}% vs. anterior`,
-      "change",
-    );
-    if (value) n.classList.add(value > 0 !== lower ? "good" : "bad");
+  function tally(block, shown) {
+    const count = comparisons.get(block) || { shown: 0, omitted: 0 };
+    count[shown ? "shown" : "omitted"]++;
+    comparisons.set(block, count);
+  }
+  function compare(block, current, previous) {
+    if (current == null) return null;
+    const value = delta(current, previous);
+    tally(block, value != null);
+    return value;
+  }
+  function changeText(value) {
+    return value === 0
+      ? "Sem variação vs. anterior"
+      : `${value > 0 ? "+" : "−"}${num(Math.abs(value))}% vs. anterior`;
+  }
+  function change(value, key, label) {
+    const n = el("p", null, "change");
+    if (value) {
+      n.classList.add(value > 0 !== lowerIsBetter.has(key) ? "good" : "bad");
+      n.append(icon(value > 0 ? "rise" : "fall"));
+    }
+    n.append((label ? label + ": " : "") + changeText(value));
     return n;
+  }
+  function updateCaption() {
+    const period = [...loaded.values()][0]?.period;
+    if (!period) return;
+    let shown = 0,
+      omitted = 0;
+    for (const count of comparisons.values()) {
+      shown += count.shown;
+      omitted += count.omitted;
+    }
+    const current = `${dateBR(period.start)} a ${dateBR(period.end)}`,
+      previous = `${dateBR(period.previous_start)} a ${dateBR(period.previous_end)}`;
+    $("period-caption").textContent = shown
+      ? `${current}, comparado com ${previous}.`
+      : `${current}.`;
+    $("comparison-note").hidden = !omitted;
+    $("comparison-note").textContent = shown
+      ? "Indicadores sem variação não têm valor no período anterior."
+      : `Sem dados no período anterior (${previous}) para comparar.`;
   }
   function query() {
     const p = new URLSearchParams({
@@ -131,7 +179,7 @@
     return p;
   }
   async function api(path) {
-    const r = await fetch("/kanban/metrics/" + path, {
+    const r = await fetch("/kanban/" + path, {
       credentials: "same-origin",
     });
     if (!r.ok) {
@@ -146,6 +194,7 @@
     for (const chart of charts.values()) chart.destroy();
     charts.clear();
     loaded.clear();
+    comparisons.clear();
     for (const block of Object.keys(names)) $(block).replaceChildren();
   }
   function clearCharts(block) {
@@ -155,50 +204,44 @@
         charts.delete(id);
       }
   }
-  function chart(
-    block,
-    target,
-    labels,
-    series,
-    type = "bar",
-    horizontal = true,
-  ) {
+  function chart(block, target, labels, series, options = {}) {
+    const { type = "bar", horizontal = true, titles } = options;
     const wrap = el("div", null, "chart-wrap"),
       canvas = el("canvas");
     canvas.setAttribute("role", "img");
     canvas.setAttribute(
       "aria-label",
-      labels
+      (titles || labels)
         .map(
           (label, i) =>
-            label + ": " + series.map((s) => num(s.data[i])).join(", "),
+            label +
+            ": " +
+            series.map((s) => (s.data[i] == null ? "sem dados" : num(s.data[i]))).join(", "),
         )
         .join("; "),
     );
     wrap.append(canvas);
     target.append(wrap);
-    const palette = [
-      "blue-9",
-      "teal-9",
-      "amber-9",
-      "ruby-9",
-      "iris-9",
-      "slate-9",
-    ];
+    const palette = ["blue-9", "teal-9", "amber-9", "ruby-9", "iris-9", "slate-9"];
     Chart.defaults.color = color("slate-11");
     Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
-    const datasets = series.map((s, i) => ({
+    const datasets = series.map(({ colors, ...s }, i) => ({
       ...s,
       backgroundColor:
-        type === "doughnut"
+        colors ||
+        (type === "doughnut"
           ? labels.map((_, j) => color(palette[j % palette.length]))
-          : color(palette[i % palette.length]),
-      borderColor: color(palette[i % palette.length]),
-      borderWidth: type === "line" ? 2 : 0,
-      pointRadius: 3,
-      tension: 0.25,
+          : color(palette[i % palette.length])),
+      borderColor: type === "doughnut" ? color("solid-2") : color(palette[i % palette.length]),
+      borderWidth: type === "line" ? 2 : type === "doughnut" ? 2 : 0,
+      // Linhas retas: a curva sugeria valores entre um dia e outro (UX-48).
+      tension: 0,
+      pointRadius: type === "line" ? 2 : 0,
+      pointHoverRadius: 4,
       borderRadius: type === "bar" ? 4 : 0,
+      maxBarThickness: 28,
     }));
+    const axisTicks = { color: color("slate-11"), maxRotation: 0 };
     const instance = new Chart(canvas, {
       type,
       data: { labels, datasets },
@@ -206,13 +249,21 @@
         responsive: true,
         maintainAspectRatio: false,
         indexAxis: horizontal ? "y" : "x",
+        interaction: type === "line" ? { mode: "index", intersect: false } : undefined,
         animation: matchMedia("(prefers-reduced-motion: reduce)").matches
           ? false
           : { duration: 250 },
         plugins: {
           legend: {
             display: series.length > 1 || type === "doughnut",
-            labels: { color: color("slate-11") },
+            align: "start",
+            labels: {
+              color: color("slate-11"),
+              usePointStyle: true,
+              pointStyle: "circle",
+              boxWidth: 8,
+              boxHeight: 8,
+            },
           },
           tooltip: {
             backgroundColor: color("solid-2"),
@@ -221,13 +272,17 @@
             borderColor: color("slate-6"),
             borderWidth: 1,
             callbacks: {
+              title(items) {
+                const i = items[0]?.dataIndex;
+                return titles && i != null ? titles[i] : items[0]?.label;
+              },
               label(context) {
-                const series = context.dataset;
-                const value = series.data[context.dataIndex];
-                const text = `${series.label}: ${num(value)}`;
-                if (!series.previous) return text;
-                const change = delta(value, series.previous[context.dataIndex]);
-                return [text, variation(change).textContent];
+                const s = context.dataset;
+                const value = s.data[context.dataIndex];
+                const text = `${s.label}: ${num(value)}`;
+                if (!s.previous) return text;
+                const variation = delta(value, s.previous[context.dataIndex]);
+                return variation == null ? text : [text, changeText(variation)];
               },
             },
           },
@@ -238,55 +293,59 @@
             : {
                 x: {
                   beginAtZero: true,
-                  grid: { color: color("slate-3") },
-                  ticks: { color: color("slate-11") },
+                  grid: { color: color("slate-3"), display: horizontal },
+                  ticks: horizontal
+                    ? { ...axisTicks, precision: 0 }
+                    : { ...axisTicks, autoSkip: true, autoSkipPadding: 16, maxTicksLimit: 8 },
                 },
                 y: {
                   beginAtZero: true,
-                  grid: { display: false },
-                  ticks: { color: color("slate-11") },
+                  grid: { color: color("slate-3"), display: !horizontal },
+                  ticks: horizontal ? axisTicks : { ...axisTicks, precision: 0 },
                 },
               },
       },
     });
     charts.set(block + ":" + charts.size, instance);
   }
-  function panel(title) {
-    const n = el("div", null, "metric-panel");
-    n.append(el("h3", title));
+  function panel(title, definition) {
+    const n = el("div", null, "metric-panel"),
+      h = el("h3", title);
+    if (definition) h.append(help(definition, title));
+    n.append(h);
     return n;
   }
   function empty(target, text = "Sem dados neste período.") {
-    target.append(el("div", text, "chart-empty"));
+    target.append(el("p", text, "chart-empty"));
   }
-  function kpis(target, rows, result) {
+  function kpis(block, target, rows, result) {
     const grid = el("div", null, "kpi-grid");
-    for (const [key, label, lower, definition] of rows) {
+    const { current, previous } = result;
+    for (const [key, label, hint] of rows) {
       const n = el("article", null, "metric-kpi"),
         title = el("p", label, "kpi-label");
-      title.append(tooltip(definition || key));
-      n.append(title, el("p", format(key, result.current[key]), "kpi-value"));
+      title.append(help(key, label));
+      n.append(title, el("p", format(key, current[key]), "kpi-value"));
+      if (current[key] == null && hint) n.append(el("p", hint, "kpi-hint"));
       if (key === "wins") {
-        n.append(
-          el(
-            "p",
-            money(result.current.revenue || 0) + " em receita",
-            "kpi-secondary",
-          ),
-          Object.assign(variation(result.variation.revenue), {
-            textContent:
-              "Receita: " + variation(result.variation.revenue).textContent,
-          }),
-        );
+        n.append(el("p", money(current.revenue || 0) + " em receita", "kpi-secondary"));
+        // Uma linha por variação, cada uma com o seu rótulo (UX-41).
+        for (const [field, name] of [
+          ["wins", "Ganhos"],
+          ["revenue", "Receita"],
+        ]) {
+          const value = compare(block, current[field], previous[field]);
+          if (value != null) n.append(change(value, field, name));
+        }
+      } else {
+        const value = compare(block, current[key], previous[key]);
+        if (value != null) n.append(change(value, key));
       }
-      const change = variation(result.variation[key], lower);
-      if (key === "wins") change.prepend("Ganhos: ");
-      n.append(change);
       grid.append(n);
     }
     target.append(grid);
   }
-  function table(target, columns, rows, previous = [], key = (r) => r.id) {
+  function table(block, target, columns, rows, previous = [], key = (r) => r.id) {
     if (!rows.length) {
       empty(target);
       return;
@@ -294,72 +353,136 @@
     const wrap = el("div", null, "table-wrap"),
       t = el("table", null, "metrics-table"),
       head = el("thead"),
-      body = el("tbody");
-    let order = 1;
-    const tr = el("tr");
+      body = el("tbody"),
+      tr = el("tr");
+    // Variações calculadas uma vez; a ordenação só reorganiza as linhas.
+    const variations = new Map(
+      rows.map((row) => {
+        const old = previous.find((p) => key(p) === key(row));
+        return [
+          row,
+          Object.fromEntries(
+            columns
+              .filter(([, , numeric]) => numeric)
+              .map(([field]) => [
+                field,
+                old
+                  ? compare(block, row[field], old[field])
+                  : (tally(block, false), null),
+              ]),
+          ),
+        ];
+      }),
+    );
+    let sorted = null;
     function fill(list) {
       body.replaceChildren();
       for (const row of list) {
         const line = el("tr");
-        const old = previous.find((p) => key(p) === key(row));
-        for (const [field, title, numeric] of columns) {
+        for (const [field, , numeric] of columns) {
           const cell = el("td");
           if (numeric) {
-            cell.append(
-              el("div", format(field, row[field])),
-              variation(
-                delta(row[field], old?.[field] ?? 0),
-                field.includes("days") ||
-                  field.includes("overdue") ||
-                  field.includes("seconds") ||
-                  field === "losses",
-              ),
-            );
+            cell.className = "numeric";
+            cell.append(el("span", format(field, row[field]), "cell-value"));
+            const value = variations.get(row)[field];
+            if (value != null) cell.append(change(value, field));
           } else cell.textContent = row[field] ?? "Não informado";
           line.append(cell);
         }
         body.append(line);
       }
     }
-    for (const [field, title, numeric] of columns) {
+    const headers = columns.map(([field, title, numeric]) => {
       const th = el("th"),
-        b = el("button", title + " ↕");
+        b = el("button", null, "sort");
+      th.scope = "col";
+      if (numeric) th.className = "numeric";
       b.type = "button";
+      b.append(el("span", title, "sort-label"));
+      // A definição fica como dica no próprio cabeçalho (UX-45).
+      if (definitions[field]) {
+        b.title = definitions[field];
+        b.classList.add("has-help");
+      }
       b.onclick = () => {
-        order *= -1;
+        const dir = sorted?.field === field ? -sorted.dir : numeric ? -1 : 1;
+        sorted = { field, dir };
         fill(
           [...rows].sort(
-            (a, b) =>
-              order *
+            (x, y) =>
+              dir *
               (numeric
-                ? Number(a[field] || 0) - Number(b[field] || 0)
-                : String(a[field] || "").localeCompare(
-                    String(b[field] || ""),
-                    "pt-BR",
-                  )),
+                ? Number(x[field] ?? -Infinity) - Number(y[field] ?? -Infinity) || 0
+                : String(x[field] ?? "").localeCompare(String(y[field] ?? ""), "pt-BR")),
           ),
         );
+        for (const [other, cell] of headers) {
+          const button = cell.firstChild;
+          button.querySelector(".sort-icon")?.remove();
+          if (other === field) {
+            cell.setAttribute("aria-sort", dir > 0 ? "ascending" : "descending");
+            button.append(icon(dir > 0 ? "up" : "down", "icon sort-icon"));
+          } else cell.removeAttribute("aria-sort");
+        }
       };
       th.append(b);
-      if (definitions[field]) th.append(tooltip(field));
       tr.append(th);
-    }
+      return [field, th];
+    });
     head.append(tr);
     t.append(head, body);
     wrap.append(t);
     target.append(wrap);
     fill(rows);
   }
+  function openSettings() {
+    parent.postMessage(
+      { event: "kanban:open-page", account: Number(account), page: "configuracoes" },
+      location.origin,
+    );
+  }
+  function sourcesEmpty(target) {
+    const box = el("div", null, "empty-state");
+    const dimensions = configuration.dimensions || {};
+    if (dimensions.source || dimensions.campaign) {
+      box.append(
+        el("h3", "Nenhuma origem ou campanha neste período"),
+        el(
+          "p",
+          "As negociações do período não têm origem nem campanha preenchidas nos contatos do Chatwoot.",
+        ),
+      );
+    } else {
+      box.append(
+        el("h3", "Origem e campanha não configuradas"),
+        el(
+          "p",
+          administrator
+            ? "Escolha, nas Configurações do Pipeline, os atributos de contato que guardam a origem e a campanha. Os valores preenchidos no Chatwoot passam a aparecer aqui."
+            : "Um administrador da conta pode escolher, nas Configurações do Pipeline, os atributos de contato que guardam a origem e a campanha.",
+        ),
+      );
+      if (administrator) {
+        const action = el("button", "Abrir configurações", "primary");
+        action.type = "button";
+        action.onclick = openSettings;
+        box.append(action);
+      }
+    }
+    target.append(box);
+  }
   function render(block, result) {
     clearCharts(block);
+    comparisons.delete(block);
     const section = $(block);
     section.replaceChildren();
     section.setAttribute("aria-busy", "false");
     const heading = el("div", null, "block-heading"),
-      exportButton = el("a", "Exportar CSV", "export metric-link");
-    exportButton.href =
-      "/kanban/metrics/" + block + "?" + query() + "&format=csv";
+      exportButton = el("a", null, "metric-action");
+    exportButton.href = "/kanban/metrics/" + block + "?" + query() + "&format=csv";
     exportButton.download = "metricas-" + block + ".csv";
+    exportButton.setAttribute("aria-label", `Exportar CSV de ${names[block]}`);
+    exportButton.append(icon("download"), "Exportar CSV");
     heading.append(el("h2", names[block]), exportButton);
     section.append(heading);
     const body = el("div", null, "block-body");
@@ -368,77 +491,92 @@
       p = result.previous;
     if (block === "summary")
       kpis(
+        block,
         body,
         [
           ["leads", "Leads novos"],
           ["ongoing", "Em andamento"],
-          ["wins", "Ganhos + receita"],
-          ["losses", "Perdidos", true],
+          ["wins", "Ganhos e receita"],
+          ["losses", "Perdidos"],
           ["win_rate", "Taxa de ganho"],
-          ["average_ticket", "Ticket médio"],
+          ["average_ticket", "Ticket médio", "Nenhum ganho no período."],
           ["open_value", "Valor em aberto"],
-          ["cycle_days", "Ciclo médio", true],
+          ["cycle_days", "Ciclo médio", "Nenhum ganho no período."],
         ],
         result,
       );
     if (block === "funnel") {
+      // Nome do funil só quando o recorte mistura funis (UX-47).
+      const several = new Set(c.rows.map((r) => r.funnel_id)).size > 1;
+      const label = (r) => (several ? r.funnel + " · " : "") + r.name;
       const columns = el("div", null, "metric-columns"),
         distribution = panel("Entradas por etapa"),
-        dwell = panel("Tempo médio na etapa · dias");
+        dwell = panel("Tempo médio na etapa", "dwell_days");
       columns.append(distribution, dwell);
       body.append(columns);
-      const label = (r) =>
-        ($("funnel-filter").value ? "" : r.funnel + " · ") + r.name;
+      const colors = c.rows.map(stageColor);
       if (c.rows.some((r) => r.quantity)) {
         chart(block, distribution, c.rows.map(label), [
-          { label: "Negociações", data: c.rows.map((r) => r.quantity) },
+          { label: "Negociações", data: c.rows.map((r) => r.quantity), colors },
         ]);
-        const eligible = c.rows.filter(
-          (r, i) =>
-            r.quantity > 0 &&
-            c.rows.some(
-              (n) =>
-                n.funnel_id === r.funnel_id &&
-                Number(n.position) > Number(r.position),
-            ),
-        );
-        const drop = eligible.sort(
-          (a, b) => a.next_conversion - b.next_conversion,
-        )[0];
+        const drop = c.rows
+          .filter(
+            (r) =>
+              r.kind === "open" &&
+              r.quantity > 0 &&
+              c.rows.some(
+                (n) =>
+                  n.funnel_id === r.funnel_id &&
+                  Number(n.position) > Number(r.position),
+              ),
+          )
+          .sort((a, b) => a.next_conversion - b.next_conversion)[0];
         if (drop)
           distribution.append(
             el(
               "p",
-              `Maior queda: ${label(drop)} · ${num(100 - drop.next_conversion)}% não avançaram para a próxima etapa.`,
+              `Maior queda: ${label(drop)}. ${num(100 - drop.next_conversion)}% das negociações não avançaram para a etapa seguinte.`,
               "drop-note",
             ),
           );
       } else empty(distribution);
-      if (c.rows.some((r) => r.dwell_days != null))
+      if (c.rows.some((r) => r.dwell_days != null)) {
+        // Unidade que deixa os valores legíveis: minutos, horas ou dias.
+        const longest = Math.max(...c.rows.map((r) => Number(r.dwell_days) || 0));
+        const [unit, factor] =
+          longest < 1 / 24 ? ["Minutos", 1440] : longest < 1 ? ["Horas", 24] : ["Dias", 1];
         chart(block, dwell, c.rows.map(label), [
-          { label: "Dias", data: c.rows.map((r) => r.dwell_days) },
+          {
+            label: unit,
+            data: c.rows.map((r) =>
+              r.dwell_days == null ? null : Number(r.dwell_days) * factor,
+            ),
+            colors,
+          },
         ]);
-      else empty(dwell, "Sem permanências encerradas no período.");
+      }
+      else empty(dwell, "Nenhuma negociação saiu de uma etapa neste período.");
       table(
+        block,
         body,
         [
+          ...(several ? [["funnel", "Funil"]] : []),
           ["name", "Etapa"],
-          ["quantity", "Quantidade", true],
+          ["quantity", "Entradas", true],
           ["value", "Valor", true],
           ["conversion", "Etapa posterior", true],
-          ["next_conversion", "Próxima etapa", true],
+          ["next_conversion", "Etapa seguinte", true],
           ["dwell_days", "Permanência", true],
         ],
         c.rows,
         p.rows,
       );
-      const stale = panel("Negociações paradas");
-      stale.append(tooltip("stale"));
-      if (!c.stale.length)
-        empty(stale, "Nenhuma negociação parada neste recorte.");
+      const stale = panel("Negociações paradas", "stale");
+      if (!c.stale.length) empty(stale, "Nenhuma negociação parada neste recorte.");
       for (const row of c.stale) {
-        const line = el("p"),
+        const line = el("p", null, "stale-row"),
           link = el("button", row.name, "metric-link");
+        link.type = "button";
         link.onclick = () =>
           parent.postMessage(
             { event: "kanban:open-card", account: Number(account), id: row.id },
@@ -448,7 +586,8 @@
           link,
           el(
             "span",
-            ` · ${num(row.idle_days)} dias sem atividade (limite: ${row.stale_days})`,
+            `${num(row.idle_days)} dias sem atividade (limite: ${row.stale_days})`,
+            "muted",
           ),
         );
         stale.append(line);
@@ -467,6 +606,7 @@
         );
       else empty(box, "Nenhuma perda registrada neste período.");
       table(
+        block,
         body,
         [
           ["reason", "Motivo"],
@@ -480,100 +620,39 @@
       );
     }
     if (block === "sources") {
-      if (
-        !c.rows.length ||
-        c.rows.every(
-          (r) => r.source === "Não informada" && r.campaign === "Não informada",
-        )
-      )
-        body.append(
-          el(
-            "p",
-            "Configure os atributos de origem e campanha na configuração da conta do Kanban e preencha os campos correspondentes no Chatwoot. Os valores serão copiados para as negociações e atualizados por webhook ou reconciliação.",
-            "chart-empty",
-          ),
-        );
-      for (const [dimension, field, title] of [
-        ["origins", "source", "Por origem"],
-        ["campaigns", "campaign", "Por campanha"],
-      ]) {
-        const box = panel(title);
-        body.append(box);
-        table(
-          box,
-          [
-            [field, field === "source" ? "Origem" : "Campanha"],
-            ["leads", "Leads", true],
-            ["wins", "Ganhos", true],
-            ["win_rate", "Taxa de ganho", true],
-            ["revenue", "Receita", true],
-          ],
-          c[dimension],
-          p[dimension],
-          (r) => r[field],
-        );
-      }
-    }
-    if (block === "service") {
-      kpis(
-        body,
-        [
-          ["conversations", "Conversas"],
-          ["open", "Abertas agora", false, "service_open"],
-          ["unanswered", "Sem resposta agora", true],
-          ["resolution_seconds", "Resolução", true],
-        ],
-        result,
+      const unknown = !c.rows.some(
+        (r) => r.source !== "Não informada" || r.campaign !== "Não informada",
       );
-      body.append(el("p", c.live_note, "metric-note"));
-      const box = panel("Conversas por caixa de entrada");
-      body.append(box);
-      if (c.inboxes.length)
-        chart(
-          block,
-          box,
-          c.inboxes.map((r) => r.name),
-          [{ label: "Conversas", data: c.inboxes.map((r) => r.quantity) }],
-        );
-      else empty(box);
-      table(
-        box,
-        [
-          ["name", "Caixa de entrada"],
-          ["quantity", "Conversas", true],
-        ],
-        c.inboxes,
-        p.inboxes,
-        (r) => r.inbox_id,
-      );
-      if (c.longest_wait) {
-        const link = el(
-          "button",
-          `Maior espera atual: ${format("wait_seconds", c.longest_wait.seconds)} · abrir conversa #${c.longest_wait.id}`,
-          "metric-link",
-        );
-        link.onclick = () =>
-          parent.postMessage(
-            {
-              event: "kanban:navigate",
-              account: Number(account),
-              resource: "conversations",
-              id: c.longest_wait.id,
-            },
-            location.origin,
-          );
-        body.append(link);
+      // Um único estado vazio em vez de tabelas só com "Não informada" (UX-46).
+      if (unknown) {
+        exportButton.hidden = true;
+        sourcesEmpty(body);
       } else
-        body.append(
-          el(
-            "p",
-            "Nenhuma conversa aberta aguardando resposta.",
-            "metric-note",
-          ),
-        );
+        for (const [dimension, field, title] of [
+          ["origins", "source", "Por origem"],
+          ["campaigns", "campaign", "Por campanha"],
+        ]) {
+          const box = panel(title);
+          body.append(box);
+          table(
+            block,
+            box,
+            [
+              [field, field === "source" ? "Origem" : "Campanha"],
+              ["leads", "Leads", true],
+              ["wins", "Ganhos", true],
+              ["win_rate", "Taxa de ganho", true],
+              ["revenue", "Receita", true],
+            ],
+            c[dimension],
+            p[dimension],
+            (r) => r[field],
+          );
+        }
     }
     if (block === "team")
       table(
+        block,
         body,
         [
           ["name", "Responsável"],
@@ -589,23 +668,24 @@
       );
     if (block === "tasks")
       kpis(
+        block,
         body,
         [
           ["open", "Abertas"],
-          ["overdue", "Vencidas", true],
-          ["on_time_rate", "Concluídas no prazo"],
+          ["overdue", "Vencidas"],
+          ["on_time_rate", "Concluídas no prazo", "Nenhuma tarefa concluída no período."],
           ["completed", "Concluídas"],
         ],
         result,
       );
     if (block === "timeline") {
-      const box = panel("Leads novos × ganhos por dia");
+      const box = panel("Leads novos e ganhos por dia");
       body.append(box);
       if (c.rows.some((r) => r.leads || r.wins))
         chart(
           block,
           box,
-          c.rows.map((r) => dateBR(r.date)),
+          c.rows.map((r) => dateBR(r.date).slice(0, 5)),
           [
             {
               label: "Leads novos",
@@ -618,8 +698,7 @@
               previous: p.rows.map((r) => r.wins),
             },
           ],
-          "line",
-          false,
+          { type: "line", horizontal: false, titles: c.rows.map((r) => dateBR(r.date)) },
         );
       else empty(box);
       if (configuration.temperature) {
@@ -635,19 +714,17 @@
                 label: "Negociações",
                 data: c.temperature.map((r) => r.quantity),
                 previous: c.temperature.map(
-                  (r) =>
-                    p.temperature.find((old) => old.name === r.name)
-                      ?.quantity || 0,
+                  (r) => p.temperature.find((old) => old.name === r.name)?.quantity || 0,
                 ),
               },
             ],
-            "doughnut",
-            false,
+            { type: "doughnut", horizontal: false },
           );
         else empty(temperatures);
       }
     }
     if (c.warning) body.append(el("p", c.warning, "metric-note"));
+    updateCaption();
   }
   function day(d) {
     return d.toISOString().slice(0, 10);
@@ -684,8 +761,7 @@
       $("start").value = day(a);
       $("end").value = day(b);
     }
-    for (const id of ["start-label", "end-label"])
-      $(id).hidden = $("period").value !== "custom";
+    $("custom-range").hidden = $("period").value !== "custom";
   }
   async function load() {
     if (!$("filters").reportValidity()) return;
@@ -696,34 +772,32 @@
     }
     $("filter-warning").hidden = true;
     loaded.clear();
+    comparisons.clear();
     const id = ++generation,
       p = query();
     p.set("period", $("period").value);
     history.replaceState(null, "", location.pathname + "?" + p);
     $("metrics-status").textContent = "Atualizando…";
+    $("refresh").setAttribute("aria-busy", "true");
     for (const block of Object.keys(names)) {
       clearCharts(block);
       $(block).setAttribute("aria-busy", "true");
-      $(block).replaceChildren(
-        el("h2", names[block]),
-        el("div", null, "skeleton"),
-      );
+      $(block).replaceChildren(el("h2", names[block]), el("div", null, "skeleton"));
     }
     let errors = 0;
     await Promise.all(
       Object.keys(names).map(async (block) => {
         try {
-          const result = await api(block + "?" + p);
+          const result = await api("metrics/" + block + "?" + p);
           if (id !== generation) return;
           loaded.set(block, result);
           render(block, result);
-          $("period-caption").textContent =
-            `${dateBR(result.period.start)} a ${dateBR(result.period.end)} · comparação: ${dateBR(result.period.previous_start)} a ${dateBR(result.period.previous_end)} · Brasília`;
         } catch (error) {
           if (id !== generation) return;
           errors++;
           $(block).setAttribute("aria-busy", "false");
-          const retry = el("button", "Tentar novamente");
+          const retry = el("button", "Tentar novamente", "header-button faded");
+          retry.type = "button";
           retry.onclick = load;
           $(block).replaceChildren(
             el("h2", names[block]),
@@ -733,17 +807,23 @@
         }
       }),
     );
-    if (id === generation)
-      $("metrics-status").textContent = errors
-        ? "Alguns blocos não carregaram"
-        : "Atualizado às " +
-          new Date().toLocaleTimeString("pt-BR", {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
+    if (id !== generation) return;
+    $("refresh").removeAttribute("aria-busy");
+    $("metrics-status").textContent = errors
+      ? "Alguns blocos não carregaram"
+      : "Atualizado às " +
+        new Date().toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
   }
   async function init() {
-    configuration = await api("options?account=" + encodeURIComponent(account));
+    const [options, session] = await Promise.all([
+      api("metrics/options?account=" + encodeURIComponent(account)),
+      api("session?account=" + encodeURIComponent(account)).catch(() => ({})),
+    ]);
+    configuration = options;
+    administrator = session.role === "administrator";
     for (const [id, rows] of [
       ["funnel-filter", configuration.funnels],
       ["assignee-filter", configuration.agents],
@@ -765,10 +845,25 @@
       $("period").value = "month";
       preset();
     }
-    await load();
-    source = new EventSource(
-      "/kanban/events?account=" + encodeURIComponent(account),
+    // Menus no padrão DropdownMenu (UX-40), criados depois dos valores iniciais
+    // para o gatilho já mostrar a escolha vinda da URL.
+    filterMenu($("funnel-filter"), "Todos os funis", "Nenhum funil nesta conta.");
+    filterMenu($("period"), "", "");
+    filterMenu(
+      $("assignee-filter"),
+      "Todos os responsáveis",
+      "Nenhum agente disponível nesta conta.",
     );
+    filterMenu(
+      $("inbox-filter"),
+      "Todas as caixas de entrada",
+      "Nenhuma caixa de entrada disponível.",
+    );
+    // O período sempre tem valor: o gatilho fica neutro, como um seletor de datas.
+    $("period").parentElement.classList.add("fixed");
+    $("filters").classList.add("ready");
+    await load();
+    source = new EventSource("/kanban/events?account=" + encodeURIComponent(account));
     let connected = false;
     source.addEventListener("ready", () => {
       if (connected) load();
@@ -788,18 +883,12 @@
       $("metrics-status").textContent = "Sessão expirada";
     });
   }
-  $("period").onchange = () => {
+  $("period").addEventListener("change", () => {
     preset();
     load();
-  };
-  for (const id of [
-    "funnel-filter",
-    "assignee-filter",
-    "inbox-filter",
-    "start",
-    "end",
-  ])
-    $(id).onchange = load;
+  });
+  for (const id of ["funnel-filter", "assignee-filter", "inbox-filter", "start", "end"])
+    $(id).addEventListener("change", load);
   $("filters").onsubmit = (e) => e.preventDefault();
   $("refresh").onclick = load;
   const theme = new MutationObserver(() => {
@@ -811,8 +900,7 @@
     attributeFilter: ["class"],
   });
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape")
-      parent.postMessage({ event: "kanban:close" }, location.origin);
+    if (e.key === "Escape") parent.postMessage({ event: "kanban:close" }, location.origin);
   });
   window.addEventListener("pagehide", () => {
     source?.close();
@@ -821,6 +909,7 @@
     for (const c of charts.values()) c.destroy();
   });
   init().catch((error) => {
+    $("filters").classList.add("ready");
     $("filter-warning").hidden = false;
     $("filter-warning").textContent = error.message;
   });

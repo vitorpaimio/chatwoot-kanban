@@ -27,6 +27,7 @@ async def test_static_assets_are_versioned_and_cached(client):
         "kanban.css",
         "theme.js",
         "helpers.js",
+        "ui.js",
         "kanban.js",
     }
     versioned = await client.get(assets[0])

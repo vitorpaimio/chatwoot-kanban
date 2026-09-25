@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Configurações · Pipeline</title>
+    <link rel="stylesheet" href="/kanban/static/kanban.css" />
+    <link rel="stylesheet" href="/kanban/static/paginas.css" />
+    <script src="/kanban/static/theme.js" defer></script>
+    <script src="/kanban/static/configuracoes.js" defer></script>
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Configurações</h1>
+    </header>
+    <main class="page-content">
+      <p id="status" class="page-status" role="status">Carregando…</p>
+      <div id="settings" class="settings" hidden>
+        <section class="page-card settings-card" aria-labelledby="state-title">
+          <h2 id="state-title">Situação</h2>
+          <div id="state"></div>
+        </section>
+
+        <form id="attributes" class="page-card settings-card" aria-labelledby="attributes-title">
+          <h2 id="attributes-title">Atributos do contato</h2>
+          <p class="card-description">
+            Atributos personalizados do Chatwoot usados em Métricas. Informe a
+            chave do atributo (por exemplo, <code>origem</code>) ou deixe vazio
+            para não usar.
+          </p>
+          <label class="settings-field">Origem<input name="origem" autocomplete="off" /></label>
+          <label class="settings-field">Campanha<input name="campanha" autocomplete="off" /></label>
+          <label class="settings-field">Temperatura<input name="temperatura" autocomplete="off" /></label>
+          <p class="field-error" role="alert" hidden></p>
+          <div class="settings-actions"><button class="primary">Salvar atributos</button></div>
+        </form>
+
+        <form id="reasons" class="page-card settings-card" aria-labelledby="reasons-title">
+          <h2 id="reasons-title">Motivos de perda</h2>
+          <p class="card-description">
+            Opções pedidas ao mover uma negociação para uma etapa de perda, um
+            motivo por linha. "Outro", com descrição, fica sempre disponível.
+          </p>
+          <label class="settings-field">Motivos<textarea name="reasons" rows="6"></textarea></label>
+          <p class="field-error" role="alert" hidden></p>
+          <div class="settings-actions"><button class="primary">Salvar motivos</button></div>
+        </form>
+
+        <section class="page-card settings-card" aria-labelledby="import-title">
+          <h2 id="import-title">Importação de contatos</h2>
+          <p class="card-description">
+            Traz os contatos do Chatwoot para o Pipeline. Etapas e tarefas
+            existentes são mantidas, e negociações não são duplicadas.
+          </p>
+          <p id="import-state"></p>
+          <form id="batch" class="inline-form">
+            <label class="settings-field">Contatos por lote<input name="limit" type="number" min="1" max="100" required /></label>
+            <button>Salvar</button>
+          </form>
+          <form id="import" class="import-form" hidden>
+            <fieldset>
+              <legend>O que importar</legend>
+              <label class="choice"><input type="radio" name="mode" value="metadata" checked />Somente os dados dos contatos</label>
+              <label class="choice"><input type="radio" name="mode" value="cards" />Dados e negociações para quem ainda não está no funil</label>
+            </fieldset>
+            <div class="import-target" hidden>
+              <label class="settings-field">Funil<select name="funnel"></select></label>
+              <label class="settings-field">Etapa<select name="stage"></select></label>
+            </div>
+            <p class="field-error" role="alert" hidden></p>
+            <div class="settings-actions">
+              <button type="button" data-cancel>Cancelar</button>
+              <button class="primary">Iniciar importação</button>
+            </div>
+          </form>
+          <div id="import-actions" class="settings-actions"></div>
+        </section>
+
+        <form id="token" class="page-card settings-card" aria-labelledby="token-title">
+          <h2 id="token-title">Token de acesso</h2>
+          <p class="card-description">
+            Token de um administrador desta conta, usado pelo Pipeline para
+            falar com o Chatwoot. No Chatwoot, abra Configurações do Perfil e
+            copie o Token de acesso. Ele é guardado criptografado.
+          </p>
+          <label class="settings-field">Novo token de acesso<input name="token" type="password" autocomplete="off" required minlength="10" /></label>
+          <p class="field-error" role="alert" hidden></p>
+          <div class="settings-actions"><button class="primary">Atualizar token</button></div>
+        </form>
+
+        <section class="page-card settings-card danger-card" aria-labelledby="disable-title">
+          <h2 id="disable-title">Desativar o Pipeline</h2>
+          <p class="card-description">
+            O quadro deixa de funcionar nesta conta. Funis, etapas, negociações
+            e tarefas continuam salvos; para reativar, informe o token de
+            acesso no Kanban.
+          </p>
+          <div class="settings-actions"><button id="disable" type="button" class="danger-outline">Desativar Pipeline</button></div>
+        </section>
+
+        <details id="technical" class="page-card settings-card">
+          <summary><h2>Detalhes técnicos</h2></summary>
+          <p class="card-description">
+            Recursos que o Pipeline registrou no Chatwoot desta conta. Reaplicar
+            a configuração refaz atributos e webhook sem apagar dados.
+          </p>
+          <ul id="resources" class="resource-list"></ul>
+          <div class="settings-actions"><button id="retry" type="button">Reaplicar configuração</button></div>
+        </details>
+      </div>
+    </main>
+    <dialog id="confirm" class="confirm-dialog" aria-labelledby="confirm-title">
+      <form method="dialog">
+        <h3 id="confirm-title">Desativar o Pipeline?</h3>
+        <p>
+          O quadro, as tarefas e as métricas ficam indisponíveis nesta conta até
+          alguém reativar com o token de acesso. Nenhum dado é apagado.
+        </p>
+        <div class="confirm-actions">
+          <button value="cancel">Cancelar</button>
+          <button value="confirm" class="danger">Desativar</button>
+        </div>
+      </form>
+    </dialog>
+    <div id="toast" class="toast" role="status" hidden></div>
+  </body>
+</html>

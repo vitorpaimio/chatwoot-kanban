@@ -92,7 +92,7 @@ const root = process.env.CHATWOOT_URL || "http://localhost:3000";
     await frame.locator("#manage").click();
     assert.match(
       await frame.locator("#dialog-title").textContent(),
-      /^Gerenciar/,
+      /^Etapas · /,
     );
     await frame.locator("#dialog-close").click();
     await frame.locator("#more-actions summary").click();
@@ -252,7 +252,7 @@ const root = process.env.CHATWOOT_URL || "http://localhost:3000";
     );
     const dates = await ef.evaluate(() =>
       ["overdue", "today"].map((state) => {
-        const node = document.querySelector(`.task.${state} time`);
+        const node = document.querySelector(`.task-flag.${state}`);
         return [
           getComputedStyle(node).color,
           getComputedStyle(document.documentElement)

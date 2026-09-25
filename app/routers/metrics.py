@@ -96,9 +96,13 @@ async def options(user=AUTH):
             ),
             user["account"],
         )
-        reasons = await conn.fetchval(
-            "SELECT loss_reasons FROM kb_accounts WHERE account_id=$1", user["account"]
+        account = await conn.fetchrow(
+            "SELECT loss_reasons,attribute_mappings FROM kb_accounts "
+            "WHERE account_id=$1",
+            user["account"],
         )
+        reasons = account["loss_reasons"] if account else None
+        mappings = (account["attribute_mappings"] if account else None) or {}
         temperature = await conn.fetchval(
             (
                 "SELECT exists(SELECT 1 FROM kb_contacts WHERE account_id=$1 "
@@ -128,6 +132,12 @@ async def options(user=AUTH):
             "funnels": [dict(r) for r in funnels],
             "loss_reasons": reasons or [],
             "temperature": temperature or native.get("temperature_declared", False),
+            # Diz à interface se origem e campanha têm atributo escolhido nas
+            # Configurações, para diferenciar "sem configuração" de "sem dados".
+            "dimensions": {
+                "source": bool(mappings.get("origem")),
+                "campaign": bool(mappings.get("campanha")),
+            },
         }
 
 
