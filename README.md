@@ -178,7 +178,7 @@ plano, sem alterar o Chatwoot. O instalador não importa contatos automaticament
 
 Instalações com nomes, wrappers ou proxy fora do padrão podem exigir opções
 adicionais: execute o comando com `--help` ou use a
-[configuração avançada](docs/instalacao-avancada.md). A versão candidata atual é `v0.2.0-rc.2`, com a etapa editável pelo Chatwoot.
+[configuração avançada](docs/instalacao-avancada.md). A versão candidata atual é `v0.2.0-rc.3`, com criação automática de negociações e carregamento mais rápido.
 A versão estável 0.2.0 segue em preparação; disponibilidade do instalador não equivale à certificação de todos os
 ambientes, versões e arquiteturas.
 
