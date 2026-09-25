@@ -100,3 +100,7 @@ com detalhes exploráveis. Licença da 0.2.0 e canal privado definitivo permanec
 pendentes de decisão; preservar a licença MIT atual até aprovação.
 
 Prova de revogação do frontend com API controlada: `node tests/browser/authorization.cjs`.
+Estados da ativação com API controlada: `node tests/browser/activation.cjs`.
+Menus de filtro com API controlada: `node tests/browser/filters.cjs`.
+Páginas Tarefas e Configurações com API controlada: `node tests/browser/pages.cjs`.
+Métricas com API controlada: `node tests/browser/metrics.cjs`.

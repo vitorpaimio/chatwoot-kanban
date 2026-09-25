@@ -6,6 +6,49 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+### Alterado
+
+- O quadro fica oculto até a conta estar pronta; um painel único conduz a
+  ativação, mostra o progresso da configuração, falhas com nova tentativa e
+  conta desativada (ADR-043).
+- "Token de serviço" passa a se chamar "Token de acesso", com ajuda para
+  encontrá-lo no Chatwoot; o erro de token aparece junto do campo (ADR-043).
+- A conexão em tempo real só abre depois da ativação (ADR-043).
+- Conta desativada é reativada só com o token de acesso; o quadro não mostra
+  mais "Conta não habilitada para o Kanban" (ADR-043).
+- Clicar em "Pipeline" no menu lateral abre o Kanban direto, como os grupos
+  nativos do Chatwoot (ADR-044).
+- Filtros Responsável, Etiqueta e Tarefa com menu no padrão do Chatwoot:
+  opção "todas", cor da etiqueta, pesquisa, teclado e estado vazio (ADR-044).
+- A página do quadro não rola mais inteira: cabeçalho e filtros ficam fixos,
+  cada coluna rola com a etapa visível e as barras de rolagem são finas (ADR-045).
+- "Novo funil", "Editar funil" e "Arquivar funil" ficam na barra superior do
+  quadro; "Gerenciar funil" vira a janela "Etapas"; motivos de perda,
+  importação e configuração da conta vão para Configurações (ADR-045).
+- Cartões mais compactos: uma marcação de tempo e um indicador de tarefa, sem
+  rolagem horizontal nas colunas; texto, vencimento e responsável da tarefa
+  aparecem ao abrir a negociação (ADR-045).
+- Barra do quadro no padrão das listas do Chatwoot: busca "Pesquisar..." de
+  largura fixa, filtros à direita e "Adicionar negociação" no fim; o ponto de
+  status abre Configurações (ADR-045).
+- Métricas no padrão do Chatwoot: filtros por menu, comparações só com período
+  anterior, "—" sem base, estado vazio de origem com atalho para Configurações,
+  cor das etapas e gráficos mais legíveis (ADR-046).
+
+### Adicionado
+
+- Página Tarefas no menu Pipeline: lista das tarefas abertas por vencimento,
+  com abas Vencidas, Vencem hoje e Agendadas, que abre a negociação no Kanban
+  (ADR-045).
+- Página Configurações no menu Pipeline com a configuração da conta: situação,
+  atributos do contato, motivos de perda, importação de contatos, token de
+  acesso, desativação e detalhes técnicos (ADR-045).
+- Auditoria de UX do Pipeline contra o Chatwoot 4.18, com capturas de antes e
+  depois em `docs/evidencias/auditoria-ux/`.
+- Testes de navegador `tests/browser/activation.cjs` (estados da ativação),
+  `tests/browser/filters.cjs` (menus de filtro), `tests/browser/pages.cjs`
+  (Tarefas e Configurações) e `tests/browser/metrics.cjs` (Métricas).
+
 ## [0.2.0-rc.3] — 2026-09-25
 
 Versão candidata com criação automática de negociações e carregamento mais rápido.

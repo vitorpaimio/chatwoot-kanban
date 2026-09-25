@@ -57,7 +57,11 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 
 - [ADR-039 — Funil / Etapa como lista editável](039-etapa-lista-editavel.md)
 
-- [ADR-041 — Carregamento rápido do quadro](041-carregamento-quadro.md)
 - [ADR-040 — Criação automática de negociações](040-criacao-automatica-negociacoes.md)
+- [ADR-041 — Carregamento rápido do quadro](041-carregamento-quadro.md)
 
 - [ADR-042 — Branch principal main protegida](042-branch-main-protegida.md)
+- [ADR-043 — Fluxo de ativação e referência visual no Chatwoot 4.18](043-ativacao-e-referencia-chatwoot-418.md)
+- [ADR-044 — Clique no menu Pipeline e filtros no padrão do Chatwoot 4.18](044-menu-e-filtros-chatwoot-418.md)
+- [ADR-045 — Páginas Tarefas e Configurações, ações do funil e rolagem do quadro](045-paginas-tarefas-configuracoes.md)
+- [ADR-046 — Métricas no padrão do Chatwoot 4.18](046-metricas-padrao-chatwoot-418.md)
