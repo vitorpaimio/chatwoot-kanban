@@ -701,13 +701,19 @@ function details(card) {
     ),
     actions,
   ];
-  dialog(card.name, content, () =>
-    api(`/cards/${card.id}`, "PATCH", {
+  dialog(card.name, content, () => {
+    const cents = window.KanbanHelpers.moneyInputCents(v.value);
+    // Mesma etapa: só o valor muda e o cartão fica onde está na coluna.
+    if (Number(s.value) === card.stage_id)
+      return cents === card.value_cents
+        ? null
+        : api(`/cards/${card.id}/value`, "PATCH", { version: card.version, value_cents: cents });
+    return api(`/cards/${card.id}`, "PATCH", {
       version: card.version,
       stage_id: Number(s.value),
-      value_cents: window.KanbanHelpers.moneyInputCents(v.value),
-    }),
-  );
+      value_cents: cents,
+    });
+  });
   const remove = button("", () => {
     dialog("Excluir negociação?", [el("p", "O contato, as conversas e a tarefa compartilhada serão mantidos.")], async () => {
       const result = await api(`/cards/${card.id}`, "DELETE", {version: card.version});
@@ -1783,6 +1789,7 @@ const actionNames = {
   negociacao_excluida: "Negociação excluída",
   negociacao_restaurada: "Negociação restaurada",
   cartao_criado: "Cartão criado",
+  valor_atualizado: "Valor atualizado",
   etapa_arquivada_movimento: "Cartão transferido por arquivamento",
 };
 async function history(contact) {

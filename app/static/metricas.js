@@ -19,7 +19,7 @@
     ongoing: "Negociações em etapas abertas no fim do período.",
     wins: "Negociações que entraram numa etapa de ganho no período.",
     revenue:
-      "Soma do valor das negociações ganhas, no momento em que entraram na etapa de ganho.",
+      "Soma do valor das negociações ganhas no período: o valor registrado enquanto estavam na etapa de ganho.",
     losses: "Negociações que entraram numa etapa de perda no período.",
     win_rate: "Ganhos divididos por ganhos mais perdidos no período.",
     average_ticket: "Receita dividida pelo número de ganhos.",
@@ -27,7 +27,9 @@
     cycle_days:
       "Tempo médio entre a criação da negociação e o ganho, nos ganhos do período.",
     conversion:
-      "Das negociações que entraram na etapa no período, quantas passaram depois por qualquer etapa seguinte do mesmo funil, até hoje.",
+      "Das negociações que entraram na etapa no período, quantas passaram depois por uma etapa seguinte do mesmo funil, até hoje. Etapas de perda não contam como avanço.",
+    loss_rate:
+      "Das negociações que entraram na etapa no período, quantas foram depois para uma etapa de perda, até hoje.",
     next_conversion:
       "Das negociações que entraram na etapa no período, quantas passaram depois pela etapa seguinte.",
     dwell_days:
@@ -87,7 +89,7 @@
     n == null
       ? "—"
       : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
-  const PERCENT = ["win_rate", "on_time_rate", "conversion", "next_conversion"];
+  const PERCENT = ["win_rate", "on_time_rate", "conversion", "next_conversion", "loss_rate"];
   const format = (key, value) =>
     value == null
       ? "—"
@@ -566,6 +568,7 @@
           ["value", "Valor", true],
           ["conversion", "Etapa posterior", true],
           ["next_conversion", "Etapa seguinte", true],
+          ["loss_rate", "Perda", true],
           ["dwell_days", "Permanência", true],
         ],
         c.rows,
@@ -634,6 +637,27 @@
         ]) {
           const box = panel(title);
           body.append(box);
+          // Dimensão sem atributo mapeado: avisar em vez de listar "Não informada".
+          if (!(configuration.dimensions || {})[field]) {
+            const hint = el("div", null, "empty-state");
+            hint.append(
+              el(
+                "p",
+                `${field === "source" ? "Origem" : "Campanha"} não configurada. ` +
+                  (administrator
+                    ? "Escolha o atributo do contato nas Configurações do Pipeline."
+                    : "Um administrador pode escolher o atributo nas Configurações do Pipeline."),
+              ),
+            );
+            if (administrator) {
+              const action = el("button", "Abrir configurações");
+              action.type = "button";
+              action.onclick = openSettings;
+              hint.append(action);
+            }
+            box.append(hint);
+            continue;
+          }
           table(
             block,
             box,

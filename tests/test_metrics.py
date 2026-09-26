@@ -142,7 +142,9 @@ async def test_funnel_conversion_dwell_and_stale(client, metric_data):
     r = (await block(client, "funnel"))["current"]
     novo = next(s for s in r["rows"] if s["id"] == metric_data["novo"])
     proposal = next(s for s in r["rows"] if s["id"] == metric_data["proposal"])
-    assert novo["quantity"] == 2 and novo["conversion"] == 50
+    # Ir para Perdido não é avanço: a perda aparece à parte (loss_rate).
+    assert novo["quantity"] == 2 and novo["conversion"] == 0
+    assert novo["loss_rate"] == 50
     assert novo["dwell_days"] == 6
     assert proposal["conversion"] == 100 and proposal["next_conversion"] == 100
     assert proposal["dwell_days"] == 2

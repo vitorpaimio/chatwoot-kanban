@@ -334,6 +334,22 @@ async def refresh_contact(conn, cw, contact_id, project_cards=True, apply_remote
         contact_id,
         recent.get("inbox_id"),
     )
+    # Primeiro contato real: a conversa mais antiga, ou o cadastro na falta dela.
+    opened = [
+        c["created_at"]
+        for c in conversations
+        if isinstance(c.get("created_at"), (int, float)) and c["created_at"] > 0
+    ]
+    first = min(opened, default=contact.get("created_at"))
+    if isinstance(first, (int, float)) and first > 0:
+        await conn.execute(
+            """UPDATE kb_contacts SET first_seen_at=least(first_seen_at,$3)
+            WHERE account_id=$1 AND contact_id=$2 AND first_seen_at IS DISTINCT FROM
+            least(first_seen_at,$3)""",
+            account,
+            contact_id,
+            datetime.fromtimestamp(first, UTC),
+        )
     # Pin é por cartão. Uma conversa removida perde o vínculo, nunca mantém ACL antiga.
     by_id = {c["id"]: c for c in conversations}
     cards = await conn.fetch(
