@@ -216,6 +216,65 @@ async def apply_remote_stage(conn, account: int, contact_id: int, value) -> bool
     return True
 
 
+AD_SOURCE = "Anúncio (Click-to-WhatsApp)"
+
+
+def ad_referral(messages: list[dict]) -> dict | None:
+    """Primeiro anúncio registrado nas mensagens recebidas, em ordem de envio."""
+    for message in sorted(messages, key=lambda m: m.get("id") or 0):
+        referral = (message.get("content_attributes") or {}).get("referral") or {}
+        if (
+            message.get("message_type") in (0, "incoming")
+            and referral.get("source_type") == "ad"
+        ):
+            return {**referral, "created_at": message.get("created_at")}
+    return None
+
+
+async def first_ad(cw, conversation_id: int) -> dict | None:
+    """Lê as primeiras mensagens da conversa (``after=0`` devolve em ordem)."""
+    data = await cw.request(
+        "GET", f"/conversations/{conversation_id}/messages", params={"after": 0}
+    )
+    messages = data.get("payload") if isinstance(data, dict) else None
+    return ad_referral(messages if isinstance(messages, list) else [])
+
+
+async def apply_ad_origin(conn, account: int, contact_id: int, referral: dict) -> bool:
+    """Grava a origem pelo anúncio no primeiro contato; nunca sobrescreve.
+
+    O gatilho de dimensões leva origem e campanha às negociações do contato, a
+    menos que o atributo mapeado nas Configurações esteja preenchido.
+    """
+    campaign = (referral.get("headline") or "").strip()[:200] or (
+        f"Anúncio {referral['source_id']}" if referral.get("source_id") else None
+    )
+    seen = referral.get("created_at")
+    applied = await conn.fetchval(
+        """UPDATE kb_contacts SET ad_source=$3,ad_campaign=$4,ad_id=$5,
+        ad_click_id=$6,ad_seen_at=$7 WHERE account_id=$1 AND contact_id=$2
+        AND ad_source IS NULL RETURNING contact_id""",
+        account,
+        contact_id,
+        AD_SOURCE,
+        campaign,
+        str(referral.get("source_id") or "")[:100] or None,
+        str(referral.get("ctwa_clid") or "")[:200] or None,
+        datetime.fromtimestamp(seen, UTC) if isinstance(seen, (int, float)) else None,
+    )
+    if applied:
+        await record(
+            conn,
+            account,
+            contact_id,
+            SYSTEM,
+            "origem_anuncio",
+            after={"source": AD_SOURCE, "campaign": campaign},
+            sync=False,
+        )
+    return bool(applied)
+
+
 async def create_automatic_cards(
     conn, account: int, contact_id: int, inbox_id: int | None
 ) -> list[int]:

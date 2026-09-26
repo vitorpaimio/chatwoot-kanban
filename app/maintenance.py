@@ -19,6 +19,7 @@ import httpx
 from app.chatwoot_client import Chatwoot
 from app.database import close_pool, connection, init_pool, lock_contact, record
 from app.routers.workspace import BRAZIL
+from app.services import apply_ad_origin, first_ad
 
 MAINTENANCE = {"id": None, "name": "Manutenção"}
 ACTION = "manutencao_metricas"
@@ -272,6 +273,45 @@ async def renumber_stages(conn, account: int) -> int:
     return len(funnels)
 
 
+async def backfill_ad_origin(conn, account: int) -> int:
+    """Procura o anúncio de Click-to-WhatsApp nas conversas de cada contato.
+
+    Só contatos sem origem de anúncio são consultados; a conversa mais antiga é
+    lida primeiro, porque a origem é a do primeiro contato.
+    """
+    contacts = await conn.fetch(
+        """SELECT contact_id FROM kb_contacts WHERE account_id=$1
+        AND ad_source IS NULL ORDER BY contact_id""",
+        account,
+    )
+    found = 0
+    async with await Chatwoot.for_account(conn, account) as cw:
+        for row in contacts:
+            contact = row["contact_id"]
+            try:
+                data = await cw.request("GET", f"/contacts/{contact}/conversations")
+                conversations = sorted(
+                    data.get("payload", []), key=lambda c: c.get("created_at") or 0
+                )
+                referral = None
+                for conversation in conversations:
+                    referral = await first_ad(cw, conversation["id"])
+                    if referral:
+                        break
+            except httpx.HTTPStatusError as exc:
+                print(f"Contato {contact}: indisponível ({exc.response.status_code})")
+                continue
+            if not referral:
+                continue
+            async with conn.transaction():
+                await lock_contact(conn, account, contact)
+                if await apply_ad_origin(conn, account, contact, referral):
+                    found += 1
+                    name = referral.get("headline") or referral.get("source_id")
+                    print(f"Contato {contact}: anúncio {name}")
+    return found
+
+
 async def main(args: argparse.Namespace) -> None:
     await init_pool()
     try:
@@ -297,6 +337,9 @@ async def main(args: argparse.Namespace) -> None:
                     print(f"{label}: {total} cartões com a criação retroagida")
                 for card_id, day in args.won_at:
                     await set_won_at(conn, args.account, card_id, day)
+                if args.ad_origin:
+                    total = await backfill_ad_origin(conn, args.account)
+                    print(f"{label}: {total} contatos com origem pelo anúncio")
             finally:
                 if rehearsal:
                     await rehearsal.rollback()
@@ -321,6 +364,11 @@ def parser() -> argparse.ArgumentParser:
         default=[],
         metavar="CARTAO=AAAA-MM-DD",
         help="data real de um ganho; repita para vários cartões",
+    )
+    cli.add_argument(
+        "--ad-origin",
+        action="store_true",
+        help="preenche origem e campanha pelo anúncio de Click-to-WhatsApp",
     )
     cli.add_argument(
         "--renumber-stages",
