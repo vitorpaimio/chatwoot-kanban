@@ -236,16 +236,13 @@ def test_due_today_is_not_overdue():
     assert task_state(date(2026, 9, 24), date(2026, 9, 23)) == "active"
 
 
-async def test_reports_conversion_and_history(client):
+async def test_history_by_contact(client):
     data = await board(client)
     card = data["cards"][0]
     await client.patch(
         f"/kanban/cards/{card['id']}",
         json={"version": 1, "stage_id": data["stages"][1]["id"], "value_cents": 12345},
     )
-    report = (await client.get("/kanban/reports")).json()
-    assert report["conversion"][str(card["funnel_id"])] == 1
-    assert sum(s["value_cents"] for s in report["stages"]) == 12345
     assert (await client.get("/kanban/history?contact_id=999")).json() == []
     assert len((await client.get("/kanban/history?contact_id=10")).json()) == 1
 
@@ -560,83 +557,6 @@ async def test_import_waits_for_stage_archive_lock(client):
             "UPDATE kb_stages SET archived=true WHERE id=$1", stage["id"]
         )
     assert await asyncio.wait_for(waiting, 1) is False
-
-
-async def test_evolution_counts_moves_not_reorders_and_isolates_accounts(client):
-    data = await board(client)
-    card = data["cards"][0]
-    funnel = card["funnel_id"]
-    won = next(s for s in data["stages"] if s["kind"] == "won")
-    await client.patch(
-        f"/kanban/cards/{card['id']}",
-        json={"version": 1, "stage_id": won["id"]},
-    )
-    await client.patch(
-        f"/kanban/cards/{card['id']}",
-        json={"version": 2, "stage_id": won["id"], "value_cents": 23000},
-    )
-    async with connection() as conn:
-        other = await conn.fetchval(
-            "SELECT id FROM kb_funnels WHERE account_id=2 LIMIT 1"
-        )
-        await record(
-            conn,
-            2,
-            10,
-            {"id": 42, "name": "Outra conta"},
-            "cartao_criado",
-            funnel=other,
-            sync=False,
-        )
-        await record(
-            conn,
-            1,
-            10,
-            {"id": 3, "name": "Admin"},
-            "cartao_criado",
-            funnel=funnel,
-            stage=card["stage_id"],
-            sync=False,
-        )
-    report = (await client.get(f"/kanban/reports?funnel_id={funnel}&days=7")).json()
-    evolution = report["evolution"]
-    assert len(evolution["daily"]) == 7
-    assert evolution["moves"] == 1
-    assert evolution["entries"] == 1
-    assert evolution["moved_contacts"] == 1
-    assert sum(day["moves"] for day in evolution["daily"]) == 1
-    assert len(evolution["recent"]) == 2
-    assert all(event["funnel_id"] == funnel for event in evolution["recent"])
-    assert any(event["previous_stage"] == "Novo" for event in evolution["recent"])
-    assert (await client.get(f"/kanban/reports?funnel_id={other}")).status_code == 404
-    assert (await client.get("/kanban/reports?days=366")).status_code == 422
-    assert (await client.get("/kanban/reports?days=0")).status_code == 422
-
-
-async def test_evolution_uses_brasilia_day_and_zero_fills(client):
-    data = await board(client)
-    funnel = data["cards"][0]["funnel_id"]
-    async with connection() as conn:
-        await record(
-            conn,
-            1,
-            10,
-            {"id": 3, "name": "Admin"},
-            "contato_importado",
-            funnel=funnel,
-            sync=False,
-        )
-        await conn.execute("""
-            UPDATE kb_history SET created_at=
-            (((now() AT TIME ZONE 'America/Sao_Paulo')::date - 1)::timestamp
-              + interval '23 hours 30 minutes') AT TIME ZONE 'America/Sao_Paulo'
-            WHERE account_id=1
-        """)
-    today = (await client.get(f"/kanban/reports?days=1&funnel_id={funnel}")).json()
-    week = (await client.get(f"/kanban/reports?days=7&funnel_id={funnel}")).json()
-    assert today["evolution"]["entries"] == 0
-    assert week["evolution"]["daily"][-2]["entries"] == 1
-    assert week["evolution"]["daily"][-1]["entries"] == 0
 
 
 async def test_new_deal_imports_selected_contact_only(client, monkeypatch):

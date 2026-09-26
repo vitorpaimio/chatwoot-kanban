@@ -16,6 +16,8 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
   da coluna (`PATCH /kanban/cards/{id}/value`).
 - A importação cria o lead na data do primeiro contato, não na da importação.
 - Etapas não ficam mais com posições repetidas no mesmo funil.
+- "Negociação parada" considera a última mensagem do cliente.
+- A equipe recebe o crédito do ganho de quem era responsável ao fechar.
 
 ### Adicionado
 
@@ -23,6 +25,12 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 - Comando `python -m app.maintenance` para reparar métricas de dados já gravados,
   com `--dry-run`.
 - Aviso de configuração nos painéis de origem ou campanha sem atributo mapeado.
+- Tamanho da amostra junto da taxa de ganho.
+
+### Removido
+
+- Bloco `service` de Métricas e endpoint `GET /kanban/reports`, sem uso na
+  interface; atendimento fica nos relatórios do Chatwoot.
 
 ## [0.2.0-rc.4] — 2026-09-25
 

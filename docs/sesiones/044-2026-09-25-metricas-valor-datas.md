@@ -34,3 +34,15 @@ seguida de organização do funil. Decisões no
 - Na conta 8: rodar o reparo com `--dry-run`, conferir e aplicar; comparar o
   resumo e o funil com os números esperados do relato.
 - Avaliar o avanço automático no primeiro diálogo (`message_created`).
+
+## Segundo diagnóstico (PR de ajustes)
+
+- `app/metrics/queries.py`: parada com mensagem do cliente; equipe pelo
+  responsável no fechamento.
+- `app/metrics/service.py`, `app/routers/metrics.py`, `app/routers/workspace.py`:
+  remoção do bloco `service`, de `GET /reports` e de `app/reporting.py`.
+- `app/static/metricas.js`: amostra na taxa de ganho e textos de ajuda.
+- Testes: parada com mensagem do cliente, ganho após reatribuição; testes de
+  `/reports` removidos com a rota.
+- Validação: Ruff, 218 testes Python e JavaScript; Métricas no Chatwoot local
+  mostrou "1 de 1 fechamento" e a tabela da equipe.

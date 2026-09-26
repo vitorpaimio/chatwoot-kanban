@@ -15,9 +15,10 @@
   };
   // Glossário do Pipeline: "negociação" é o cartão do quadro (UX-50).
   const definitions = {
-    leads: "Negociações criadas no período.",
+    leads:
+      "Negociações criadas no período: manuais, importadas (na data do primeiro contato) e criadas pela entrada automática, conforme as caixas de cada funil.",
     ongoing: "Negociações em etapas abertas no fim do período.",
-    wins: "Negociações que entraram numa etapa de ganho no período.",
+    wins: "Negociações que entraram numa etapa de ganho no período. Na tabela da equipe, o ganho fica com quem era responsável ao fechar.",
     revenue:
       "Soma do valor das negociações ganhas no período: o valor registrado enquanto estavam na etapa de ganho.",
     losses: "Negociações que entraram numa etapa de perda no período.",
@@ -35,7 +36,7 @@
     dwell_days:
       "Tempo médio que as negociações ficaram na etapa, nas saídas do período.",
     stale:
-      "Negociações sem movimento nem tarefa concluída há mais dias que o limite do funil (padrão: 7).",
+      "Negociações sem movimento, tarefa concluída ou mensagem do cliente há mais dias que o limite do funil (padrão: 7).",
     open: "Tarefas abertas no fim do período.",
     overdue: "Tarefas abertas com vencimento já passado, no horário de Brasília.",
     on_time_rate:
@@ -329,6 +330,17 @@
       title.append(help(key, label));
       n.append(title, el("p", format(key, current[key]), "kpi-value"));
       if (current[key] == null && hint) n.append(el("p", hint, "kpi-hint"));
+      if (key === "win_rate") {
+        // Tamanho da amostra: 20% com 3 fechamentos não vale o mesmo que com 300.
+        const closed = (current.wins || 0) + (current.losses || 0);
+        n.append(
+          el(
+            "p",
+            `${current.wins || 0} de ${closed} ${closed === 1 ? "fechamento" : "fechamentos"}`,
+            "kpi-secondary",
+          ),
+        );
+      }
       if (key === "wins") {
         n.append(el("p", money(current.revenue || 0) + " em receita", "kpi-secondary"));
         // Uma linha por variação, cada uma com o seu rótulo (UX-41).

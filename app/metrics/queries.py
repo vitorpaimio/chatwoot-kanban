@@ -139,9 +139,14 @@ STALE = (
  SELECT contact_id,max(closed_at) AS happened FROM task_scope
  WHERE closed_at<$3 GROUP BY contact_id
 ), activity AS (
- SELECT c.*,greatest(c.created_at,e.happened,t.happened) AS last_activity
+ -- Mensagem do cliente também é atividade: quem conversa todo dia não está parado.
+ SELECT c.*,greatest(c.created_at,e.happened,t.happened,
+ CASE WHEN ct.last_activity_at<least($3,now()) THEN ct.last_activity_at END)
+ AS last_activity
  FROM cards c LEFT JOIN latest_entry e ON e.card_id=c.id
- LEFT JOIN latest_task t ON t.contact_id=c.contact_id WHERE c.stage_kind='open'
+ LEFT JOIN latest_task t ON t.contact_id=c.contact_id
+ JOIN kb_contacts ct ON (ct.account_id,ct.contact_id)=($1,c.contact_id)
+ WHERE c.stage_kind='open'
 )
 SELECT id,contact_id,funnel_id,name,stale_days,last_activity,
  extract(epoch FROM (least($3,now())-last_activity))/86400 AS idle_days
@@ -177,18 +182,33 @@ GROUP BY 1,2 ORDER BY leads DESC,source,campaign
 TEAM = (
     BASE
     + """
-SELECT c.assignee_id, c.assignee_name AS name,
- count(*) FILTER(WHERE c.created_at >=$2) AS leads,count(w.card_id) AS wins,
- coalesce(100.0*count(w.card_id)/nullif(count(w.card_id)+count(l.card_id),0),0) AS
- win_rate,
- coalesce(sum(w.value_cents),0) AS revenue,
+, people AS (
+ -- Ganho e perda ficam com quem era responsável ao fechar, não com o atual.
+ SELECT assignee_id FROM cards WHERE created_at >=$2
+ UNION SELECT assignee_id FROM wins UNION SELECT assignee_id FROM losses
+)
+SELECT p.assignee_id,
+ coalesce((SELECT a.name FROM kb_agents a WHERE a.account_id=$1
+ AND a.user_id=p.assignee_id),(SELECT c.assignee_name FROM cards c
+ WHERE c.assignee_id IS NOT DISTINCT FROM p.assignee_id LIMIT 1),
+ CASE WHEN p.assignee_id IS NULL THEN 'Não atribuído'
+ ELSE 'Agente '||p.assignee_id END) AS name,
+ (SELECT count(*) FROM cards c WHERE c.created_at >=$2
+ AND c.assignee_id IS NOT DISTINCT FROM p.assignee_id) AS leads,
+ (SELECT count(*) FROM wins w WHERE w.assignee_id IS NOT DISTINCT FROM
+ p.assignee_id) AS wins,
+ coalesce(100.0*(SELECT count(*) FROM wins w WHERE w.assignee_id IS NOT DISTINCT
+ FROM p.assignee_id)/nullif((SELECT count(*) FROM wins w WHERE w.assignee_id IS NOT
+ DISTINCT FROM p.assignee_id)+(SELECT count(*) FROM losses l WHERE l.assignee_id IS
+ NOT DISTINCT FROM p.assignee_id),0),0) AS win_rate,
+ (SELECT coalesce(sum(w.value_cents),0) FROM wins w WHERE w.assignee_id IS NOT
+ DISTINCT FROM p.assignee_id) AS revenue,
  (SELECT count(*) FROM task_scope t WHERE (t.closed_at IS NULL OR t.closed_at >=$3)
  AND t.due_date < (least($3-interval '1 microsecond',now())
  AT TIME ZONE 'America/Sao_Paulo')::date
  AND t.contact_id IN (SELECT cs.contact_id FROM cards cs WHERE cs.assignee_id IS
- NOT DISTINCT FROM c.assignee_id)) AS overdue_tasks
-FROM cards c LEFT JOIN wins w ON w.card_id=c.id LEFT JOIN losses l ON l.card_id=c.id
-GROUP BY c.assignee_id,c.assignee_name ORDER BY revenue DESC,name
+ NOT DISTINCT FROM p.assignee_id)) AS overdue_tasks
+FROM people p ORDER BY revenue DESC,name
 """
 )
 TIMELINE = (
