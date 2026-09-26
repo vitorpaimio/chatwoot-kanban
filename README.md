@@ -178,7 +178,7 @@ plano, sem alterar o Chatwoot. O instalador não importa contatos automaticament
 
 Instalações com nomes, wrappers ou proxy fora do padrão podem exigir opções
 adicionais: execute o comando com `--help` ou use a
-[configuração avançada](docs/instalacao-avancada.md). A versão candidata atual é `v0.2.0-rc.4`, com a interface do Pipeline alinhada ao Chatwoot 4.18, criação automática de negociações e carregamento mais rápido.
+[configuração avançada](docs/instalacao-avancada.md). A versão candidata atual é `v0.2.0-rc.5`, com métricas corrigidas, origem pelo anúncio de Click-to-WhatsApp e previsão de receita.
 A versão estável 0.2.0 segue em preparação; disponibilidade do instalador não equivale à certificação de todos os
 ambientes, versões e arquiteturas.
 

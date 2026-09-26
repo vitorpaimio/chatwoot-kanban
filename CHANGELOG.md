@@ -6,6 +6,11 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+## [0.2.0-rc.5] — 2026-09-25
+
+Versão candidata com métricas corrigidas (valor, datas reais e conversão),
+origem pelo anúncio de Click-to-WhatsApp e visão comercial.
+
 ### Corrigido
 
 - Receita, ticket médio, perdas e valor por etapa usam o valor registrado
@@ -18,6 +23,7 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 - Etapas não ficam mais com posições repetidas no mesmo funil.
 - "Negociação parada" considera a última mensagem do cliente.
 - A equipe recebe o crédito do ganho de quem era responsável ao fechar.
+- O menu Pipeline aparece mesmo quando o Chatwoot carrega com a aba oculta.
 
 ### Adicionado
 
@@ -35,6 +41,13 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 - Bloco `service` de Métricas e endpoint `GET /kanban/reports`, sem uso na
   interface; atendimento fica nos relatórios do Chatwoot.
+
+### Atualização
+
+- As migrações 014 (data real de movimentos e primeiro contato) e 015 (origem
+  pelo anúncio) são aplicadas pelo serviço de migração na implantação.
+- Para corrigir dados já gravados, rode `python -m app.maintenance` dentro do
+  container do Kanban, primeiro com `--dry-run` (ver `docs/metricas.md`).
 
 ## [0.2.0-rc.4] — 2026-09-25
 
