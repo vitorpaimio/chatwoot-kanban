@@ -35,6 +35,11 @@
       "Das negociações que entraram na etapa no período, quantas passaram depois pela etapa seguinte.",
     dwell_days:
       "Tempo médio que as negociações ficaram na etapa, nas saídas do período.",
+    forecast:
+      "Valor em aberto ponderado pela chance de ganho da etapa em que cada negociação está. A chance vem do histórico: das negociações que passaram pela etapa e já fecharam, quantas foram ganhas.",
+    win_probability:
+      "Das negociações que passaram pela etapa e já fecharam, quantas foram ganhas. Com poucos fechamentos, a chance é instável.",
+    flow: "Dos leads novos do período, quantos chegaram a cada etapa ou além. Perdas não contam como avanço; a porcentagem compara com a etapa anterior.",
     stale:
       "Negociações sem movimento, tarefa concluída ou mensagem do cliente há mais dias que o limite do funil (padrão: 7).",
     open: "Tarefas abertas no fim do período.",
@@ -90,11 +95,18 @@
     n == null
       ? "—"
       : Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 });
-  const PERCENT = ["win_rate", "on_time_rate", "conversion", "next_conversion", "loss_rate"];
+  const PERCENT = [
+    "win_rate",
+    "on_time_rate",
+    "conversion",
+    "next_conversion",
+    "loss_rate",
+    "win_probability",
+  ];
   const format = (key, value) =>
     value == null
       ? "—"
-      : ["revenue", "average_ticket", "open_value", "value"].includes(key)
+      : ["revenue", "average_ticket", "open_value", "value", "forecast", "lost_value"].includes(key)
         ? money(value)
         : PERCENT.includes(key)
           ? num(value) + "%"
@@ -282,7 +294,7 @@
               label(context) {
                 const s = context.dataset;
                 const value = s.data[context.dataIndex];
-                const text = `${s.label}: ${num(value)}`;
+                const text = `${s.label}: ${s.money ? money(value * 100) : num(value)}`;
                 if (!s.previous) return text;
                 const variation = delta(value, s.previous[context.dataIndex]);
                 return variation == null ? text : [text, changeText(variation)];
@@ -515,6 +527,7 @@
           ["win_rate", "Taxa de ganho"],
           ["average_ticket", "Ticket médio", "Nenhum ganho no período."],
           ["open_value", "Valor em aberto"],
+          ["forecast", "Previsão de receita"],
           ["cycle_days", "Ciclo médio", "Nenhum ganho no período."],
         ],
         result,
@@ -527,6 +540,35 @@
         distribution = panel("Entradas por etapa"),
         dwell = panel("Tempo médio na etapa", "dwell_days");
       columns.append(distribution, dwell);
+      const flow = panel("Passagem entre etapas", "flow");
+      body.append(flow);
+      if (several)
+        empty(flow, "Escolha um funil para ver a passagem entre as etapas.");
+      else if (!c.flow.length || !c.flow[0].reached)
+        empty(flow, "Nenhum lead novo neste período.");
+      else {
+        // Cada barra mostra quantos chegaram e quanto passou da etapa anterior.
+        const titles = c.flow.map((step, i) => {
+          const before = i ? c.flow[i - 1].reached : null;
+          const share = before ? Math.round((100 * step.reached) / before) : null;
+          return share == null ? step.name : `${step.name} · ${share}% da anterior`;
+        });
+        chart(
+          block,
+          flow,
+          titles,
+          [
+            {
+              label: "Leads",
+              data: c.flow.map((step) => step.reached),
+              colors: c.flow.map((step) =>
+                step.kind === "won" ? color("teal-9") : step.color || color("blue-9"),
+              ),
+            },
+          ],
+          { titles },
+        );
+      }
       body.append(columns);
       const colors = c.rows.map(stageColor);
       if (c.rows.some((r) => r.quantity)) {
@@ -581,6 +623,7 @@
           ["conversion", "Etapa posterior", true],
           ["next_conversion", "Etapa seguinte", true],
           ["loss_rate", "Perda", true],
+          ["win_probability", "Chance de ganho", true],
           ["dwell_days", "Permanência", true],
         ],
         c.rows,
@@ -737,6 +780,43 @@
           { type: "line", horizontal: false, titles: c.rows.map((r) => dateBR(r.date)) },
         );
       else empty(box);
+      // Dinheiro no tempo: por mês quando o período passa de dois meses.
+      const money_box = panel("Receita e perdas");
+      body.append(money_box);
+      if (c.rows.some((r) => r.revenue || r.lost_value)) {
+        const monthly = c.rows.length > 62;
+        const groups = new Map();
+        for (const r of c.rows) {
+          const key = monthly ? r.date.slice(0, 7) : r.date;
+          const g = groups.get(key) || { revenue: 0, lost: 0 };
+          g.revenue += Number(r.revenue) || 0;
+          g.lost += Number(r.lost_value) || 0;
+          groups.set(key, g);
+        }
+        const keys = [...groups.keys()];
+        const label = (k) =>
+          monthly ? `${k.slice(5, 7)}/${k.slice(0, 4)}` : dateBR(k).slice(0, 5);
+        chart(
+          block,
+          money_box,
+          keys.map(label),
+          [
+            {
+              label: "Receita",
+              money: true,
+              data: keys.map((k) => groups.get(k).revenue / 100),
+              colors: color("teal-9"),
+            },
+            {
+              label: "Perdas",
+              money: true,
+              data: keys.map((k) => groups.get(k).lost / 100),
+              colors: color("ruby-9"),
+            },
+          ],
+          { horizontal: false, titles: keys.map((k) => (monthly ? label(k) : dateBR(k))) },
+        );
+      } else empty(money_box, "Nenhum ganho ou perda com valor neste período.");
       if (configuration.temperature) {
         const temperatures = panel("Temperatura");
         body.append(temperatures);
