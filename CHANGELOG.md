@@ -6,6 +6,10 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+## [0.2.0-rc.6] — 2026-09-25
+
+Versão candidata com ajustes no reparo de métricas.
+
 ### Corrigido
 
 - `--won-at` aceita `--fit-moves` para cartões organizados em massa depois do ganho.
