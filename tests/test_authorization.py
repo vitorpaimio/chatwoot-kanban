@@ -153,10 +153,6 @@ async def test_card_reads_writes_and_contact_task_scope(agent_client):
     history = (await client.get("/kanban/history")).json()
     assert any(h["action"] == "tarefa_criada" for h in history)
     assert "SEGREDO_CARD" not in str(history)
-    report = (await client.get("/kanban/reports")).json()
-    assert sum(s["quantity"] for s in report["stages"]) == 2
-    assert "SEGREDO_CARD" not in str(report)
-    assert report["evolution"]["moves"] <= 1
     async with connection() as conn:
         assert (
             await conn.fetchval("SELECT version FROM kb_cards WHERE id=$1", hidden) == 1
@@ -189,8 +185,6 @@ async def test_metrics_and_exports_exclude_hidden_cards(agent_client, block, for
     if block == "summary" and format == "json":
         assert result.json()["current"]["leads"] == 2
         assert result.json()["current"]["revenue"] == 0
-    if block == "service" and format == "json":
-        assert result.json()["current"]["open"] == 1
     forbidden = await agent_client.get(
         f"/kanban/metrics/{block}?format={format}&inbox_id=22"
     )
@@ -223,7 +217,6 @@ async def test_disabled_account_blocks_every_resource_and_worker(client, monkeyp
     for path in [
         "board",
         "history",
-        "reports",
         "events",
         "metrics/options",
         "metrics/configuration",
@@ -236,7 +229,6 @@ async def test_disabled_account_blocks_every_resource_and_worker(client, monkeyp
         "funnel",
         "losses",
         "sources",
-        "service",
         "team",
         "tasks",
         "timeline",
@@ -489,14 +481,12 @@ async def test_development_migration_dry_run_conflict_and_repeat(db):
     [
         "board",
         "history",
-        "reports",
         "events",
         "cards/1",
         "contacts/10/task",
         "metrics/options",
         "metrics/configuration",
         "metrics/summary?format=csv",
-        "metrics/service?format=csv",
     ],
 )
 async def test_forged_account_denied_before_resource_lookup(client, monkeypatch, path):

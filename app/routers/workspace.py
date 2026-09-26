@@ -20,7 +20,6 @@ from app.config import settings
 from app.database import connection, lock_contact, notify, record
 from app.event_response import EventResponse
 from app.events import hub
-from app.reporting import evolution
 from app.routers.provisioning import configuration_lock
 from app.security import administrator, decrypt, encrypt, identity
 from app.services import refresh_contact, task_state
@@ -1362,71 +1361,6 @@ async def history(
             action,
         )
     return jsonable_encoder([dict(r) for r in rows])
-
-
-@router.get("/reports")
-async def reports(
-    funnel_id: int | None = None,
-    days: int = Query(30, ge=1, le=365),
-    user=AUTH,
-):
-    async with connection(user) as conn:
-        stages = await conn.fetch(
-            (
-                """
-        SELECT f.id AS funnel_id,f.name AS funnel,s.id AS stage_id, s.name AS
-        stage,s.kind,count(c.id) AS quantity,coalesce(sum(c.value_cents),0) AS
-        value_cents, avg(extract(epoch FROM now()-c.stage_entered_at))/86400
-        AS current_dwell_days FROM kb_funnels f JOIN kb_stages s ON
-        (s.account_id,s.funnel_id)=(f.account_id,f.id) LEFT JOIN kb_visible_cards c ON
-        (c.account_id,c.stage_id)=(s.account_id,s.id) WHERE f.account_id=$1
-        AND NOT f.archived AND NOT s.archived GROUP BY f.id,s.id ORDER BY
-        f.position,s.position
-        """
-            ),
-            user["account"],
-        )
-        agents = await conn.fetch(
-            (
-                """
-        SELECT actor_id,actor_name,count(*) AS actions FROM kb_visible_history WHERE
-        account_id=$1 AND actor_id IS NOT NULL GROUP BY actor_id,actor_name
-        """
-            ),
-            user["account"],
-        )
-        dwell = await conn.fetch(
-            (
-                """
-        SELECT funnel_id,(before_state->> 'stage_id' )::bigint AS stage_id,
-        avg(extract(epoch FROM created_at-(before_state->> 'entered_at'
-        )::timestamptz))/86400 AS days FROM kb_visible_history WHERE account_id=$1 AND
-        action= 'cartao_movido' AND before_state->> 'stage_id'
-        <>after_state->> 'stage_id' AND before_state ? 'entered_at' GROUP BY
-        funnel_id,before_state->> 'stage_id'
-        """
-            ),
-            user["account"],
-        )
-        timeline = await evolution(conn, user["account"], funnel_id, days)
-    totals = {}
-    for stage in stages:
-        total = totals.setdefault(stage["funnel_id"], {"won": 0, "lost": 0})
-        if stage["kind"] in total:
-            total[stage["kind"]] += stage["quantity"]
-    conversion = {
-        fid: (t["won"] / (t["won"] + t["lost"]) if t["won"] + t["lost"] else None)
-        for fid, t in totals.items()
-    }
-    return jsonable_encoder(
-        {
-            "stages": [dict(r) for r in stages],
-            "agents": [dict(r) for r in agents],
-            "dwell": [dict(r) for r in dwell],
-            "conversion": conversion,
-            "evolution": timeline,
-        }
-    )
 
 
 @router.post("/sync/retry")

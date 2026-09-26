@@ -293,11 +293,10 @@ async def test_contact_dimensions_copy_clear_and_isolate(client):
         assert event["temperature"] is None and event["inbox_id"] is None
 
 
-async def test_service_delegated_to_chatwoot(client):
-    for format in ("json", "csv"):
-        response = await client.get(f"/kanban/metrics/service?format={format}")
-        assert response.status_code == 409
-        assert "Chatwoot" in response.json()["detail"]
+async def test_service_block_removed(client):
+    # Atendimento fica nos relatórios do Chatwoot; o bloco antigo não existe mais.
+    response = await client.get("/kanban/metrics/service")
+    assert response.status_code == 422
 
 
 async def test_options_report_configured_dimensions(client):
@@ -327,3 +326,36 @@ async def test_stage_classification_updates_balance_without_fake_win(client):
     result = (await client.get("/kanban/metrics/summary")).json()["current"]
     assert result["ongoing"] == 0
     assert result["wins"] == 0
+
+
+async def test_customer_message_keeps_deal_active(client, metric_data):
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE kb_contacts SET last_activity_at=$1 WHERE contact_id=25", dt(15)
+        )
+    stale = (await block(client, "funnel"))["current"]["stale"]
+    assert stale == []
+    async with connection() as conn:
+        # Mensagem depois do fim do período não conta para aquele recorte.
+        await conn.execute(
+            "UPDATE kb_contacts SET last_activity_at=$1 WHERE contact_id=25", dt(20)
+        )
+    stale = (await block(client, "funnel"))["current"]["stale"]
+    assert [c["id"] for c in stale] == [metric_data["ids"][4]]
+
+
+async def test_win_credited_to_closer_after_reassignment(client, metric_data):
+    async with connection() as conn:
+        await conn.execute(
+            """INSERT INTO kb_card_events(account_id,card_id,event_type,stage_id,
+            stage_kind,stage_position,value_cents,assignee_id,entered_at,created_at)
+            SELECT 1,$1,'updated',stage_id,'won',2048,10000,5,$2,$2
+            FROM kb_cards WHERE id=$1""",
+            metric_data["ids"][0],
+            dt(14),
+        )
+    rows = {
+        r["assignee_id"]: r for r in (await block(client, "team"))["current"]["rows"]
+    }
+    assert rows[3]["wins"] == 1 and rows[3]["revenue"] == 10000
+    assert 5 not in rows or rows[5]["wins"] == 0

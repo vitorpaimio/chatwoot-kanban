@@ -22,7 +22,7 @@ router = APIRouter(prefix="/kanban/metrics")
 AUTH = Depends(get_actor)
 TZ = ZoneInfo("America/Sao_Paulo")
 BLOCKS = Literal[
-    "summary", "funnel", "losses", "sources", "service", "team", "tasks", "timeline"
+    "summary", "funnel", "losses", "sources", "team", "tasks", "timeline"
 ]
 
 
@@ -174,8 +174,6 @@ async def configure(body: Configuration, user=AUTH):
 
 
 async def calculate(conn, block, args):
-    if block == "service":
-        raise HTTPException(409, "Consulte os indicadores de atendimento no Chatwoot.")
     sql = getattr(queries, block.upper())
     if block in ("summary", "tasks"):
         return dict(await conn.fetchrow(sql, *args))
@@ -255,7 +253,4 @@ async def metrics(
             "timezone": str(TZ),
         },
     }
-    if block == "service":
-        for key in ("open", "unanswered"):
-            result["variation"][key] = None
     return csv_response(block, result) if format == "csv" else result

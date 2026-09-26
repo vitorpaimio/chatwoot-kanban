@@ -45,6 +45,20 @@ organizou o funil depois. O quadro ficou correto, mas as métricas não:
 Avançar a etapa sozinho no primeiro diálogo nos dois sentidos fica fora desta
 versão: exigiria assinar `message_created`, que multiplica o volume de webhooks.
 
+## Complemento: segundo diagnóstico
+
+- "Negociação parada" considera também a última mensagem do cliente
+  (`kb_contacts.last_activity_at`, atualizada pelo `contact_updated` a cada
+  mensagem recebida). Quem conversa todo dia não aparece como parado.
+- A tabela da equipe credita ganhos, perdas e receita ao responsável registrado
+  no evento de fechamento, não ao responsável atual do cartão.
+- A taxa de ganho mostra o tamanho da amostra ("3 de 15 fechamentos").
+- Removidos o bloco `service` de Métricas (sempre respondia 409) e o endpoint
+  antigo `GET /kanban/reports` com `app/reporting.py`, sem uso na interface. Os
+  indicadores de atendimento ficam nos relatórios do Chatwoot.
+- A ajuda de "Leads novos" explica que conta negociações manuais, importadas e da
+  entrada automática, conforme as caixas de cada funil.
+
 ## Consequências
 
 - Receita e ticket passam a refletir o valor informado depois do ganho; o valor
