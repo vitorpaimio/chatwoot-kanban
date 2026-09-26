@@ -21,7 +21,9 @@ from app.provisioning.attributes import AttributeConflictError
 from app.recovery import import_one, reconcile_one
 from app.services import (
     SYSTEM,
+    apply_ad_origin,
     create_automatic_cards,
+    first_ad,
     projection,
     refresh_contact,
     setup_account,
@@ -91,11 +93,19 @@ async def process_delivery(conn, cw, row):
                         conn, cw, row["contact_id"], apply_remote=True
                     )
                     if row["event_type"] == "conversation_created":
+                        payload = row["payload"] or {}
+                        # Origem antes do cartão: o evento de criação já leva o anúncio.
+                        if isinstance(payload.get("id"), int):
+                            referral = await first_ad(cw, payload["id"])
+                            if referral:
+                                await apply_ad_origin(
+                                    conn, cw.account, row["contact_id"], referral
+                                )
                         await create_automatic_cards(
                             conn,
                             cw.account,
                             row["contact_id"],
-                            (row["payload"] or {}).get("inbox_id"),
+                            payload.get("inbox_id"),
                         )
                 await conn.execute(
                     "UPDATE kb_deliveries SET "

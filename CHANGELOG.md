@@ -26,6 +26,8 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
   com `--dry-run`.
 - Aviso de configuração nos painéis de origem ou campanha sem atributo mapeado.
 - Tamanho da amostra junto da taxa de ganho.
+- Origem e campanha preenchidas pelo anúncio de Click-to-WhatsApp, sem
+  configuração; `--ad-origin` no comando de manutenção (ADR-048).
 
 ### Removido
 

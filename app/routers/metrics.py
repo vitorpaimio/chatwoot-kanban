@@ -21,9 +21,7 @@ from app.security import administrator, get_actor
 router = APIRouter(prefix="/kanban/metrics")
 AUTH = Depends(get_actor)
 TZ = ZoneInfo("America/Sao_Paulo")
-BLOCKS = Literal[
-    "summary", "funnel", "losses", "sources", "team", "tasks", "timeline"
-]
+BLOCKS = Literal["summary", "funnel", "losses", "sources", "team", "tasks", "timeline"]
 
 
 def bounds(start=None, end=None):
@@ -112,6 +110,12 @@ async def options(user=AUTH):
             ),
             user["account"],
         )
+        # Anúncio de Click-to-WhatsApp preenche origem e campanha sem configuração.
+        ads = await conn.fetchval(
+            "SELECT exists(SELECT 1 FROM kb_contacts WHERE account_id=$1 "
+            "AND ad_source IS NOT NULL)",
+            user["account"],
+        )
         try:
             native = await native_options(conn, user["account"])
         except (httpx.HTTPError, ValueError):
@@ -135,8 +139,8 @@ async def options(user=AUTH):
             # Diz à interface se origem e campanha têm atributo escolhido nas
             # Configurações, para diferenciar "sem configuração" de "sem dados".
             "dimensions": {
-                "source": bool(mappings.get("origem")),
-                "campaign": bool(mappings.get("campanha")),
+                "source": bool(mappings.get("origem")) or ads,
+                "campaign": bool(mappings.get("campanha")) or ads,
             },
         }
 
