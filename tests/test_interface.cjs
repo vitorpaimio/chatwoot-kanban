@@ -27,3 +27,42 @@ test("entrada monetária limita centavos e aceita colagem em reais", () => {
   assert.equal(moneyInputCents("R$ 0,001"), 1);
   assert.equal(moneyInputCents(""), 0);
 });
+test("loader monta o menu com a aba oculta, sem requestAnimationFrame", async () => {
+  const { readFileSync } = require("node:fs");
+  const vm = require("node:vm");
+  const source = readFileSync(`${__dirname}/../app/static/loader.js`, "utf8");
+  let mutated;
+  let lookups = 0;
+  const context = {
+    location: { pathname: "/app/accounts/1/dashboard" },
+    localStorage: { getItem: () => null },
+    addEventListener() {},
+    requestAnimationFrame() {},
+    setTimeout,
+    ResizeObserver: class {
+      observe() {}
+      disconnect() {}
+    },
+    MutationObserver: class {
+      constructor(callback) {
+        mutated = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+    document: {
+      documentElement: {},
+      addEventListener() {},
+      querySelector(selector) {
+        if (selector === "aside nav") lookups += 1;
+        return null;
+      },
+    },
+  };
+  context.window = context;
+  vm.runInNewContext(source, context);
+  assert.equal(lookups, 1);
+  mutated();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(lookups, 2);
+});
