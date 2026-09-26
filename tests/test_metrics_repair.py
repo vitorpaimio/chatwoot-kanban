@@ -278,3 +278,67 @@ async def test_repair_backfills_creation_and_win_date(client, monkeypatch, capsy
     async with connection() as conn:
         with pytest.raises(SystemExit):
             await maintenance.set_won_at(conn, 1, card, date(2026, 9, 1))
+
+
+async def test_won_at_fits_bulk_moves_before_real_win(client, monkeypatch, capsys):
+    async def keep_pool():
+        return None
+
+    monkeypatch.setattr(maintenance, "init_pool", keep_pool)
+    monkeypatch.setattr(maintenance, "close_pool", keep_pool)
+    card, kind = await stages(client)
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE kb_cards SET created_at=$1,stage_entered_at=$1 WHERE id=$2",
+            OPENED,
+            card["id"],
+        )
+        await conn.execute(
+            "UPDATE kb_card_events SET created_at=$1,entered_at=$1 "
+            "WHERE card_id=$2 AND event_type='created'",
+            OPENED,
+            card["id"],
+        )
+        middle = await conn.fetchval(
+            """INSERT INTO kb_stages(account_id,funnel_id,name,position)
+            SELECT 1,funnel_id,'Em conversa',1536 FROM kb_stages WHERE id=$1
+            RETURNING id""",
+            kind["open"]["id"],
+        )
+    # Organização em massa hoje: passa por "Em conversa" e vai para Ganho.
+    await client.patch(
+        f"/kanban/cards/{card['id']}", json={"version": 1, "stage_id": middle}
+    )
+    await client.patch(
+        f"/kanban/cards/{card['id']}",
+        json={"version": 2, "stage_id": kind["won"]["id"]},
+    )
+    base = ["--account", "1", "--won-at", f"{card['id']}=2026-09-23"]
+    try:
+        await maintenance.main(maintenance.parser().parse_args(base))
+        raise AssertionError("deveria recusar sem --fit-moves")
+    except SystemExit as error:
+        assert "--fit-moves" in str(error)
+    await maintenance.main(maintenance.parser().parse_args([*base, "--fit-moves"]))
+    await maintenance.main(maintenance.parser().parse_args([*base, "--fit-moves"]))
+    async with connection() as conn:
+        moves = await conn.fetch(
+            "SELECT stage_id,created_at FROM kb_card_events WHERE card_id=$1 "
+            "AND event_type='moved' ORDER BY created_at,id",
+            card["id"],
+        )
+        cycle = (await summary_between(client, "2026-09-01", "2026-09-30"))[
+            "cycle_days"
+        ]
+    noon = maintenance.noon(date(2026, 9, 23))
+    assert [m["stage_id"] for m in moves] == [middle, kind["won"]["id"]]
+    assert OPENED < moves[0]["created_at"] < noon == moves[1]["created_at"]
+    assert round(cycle, 2) == round((noon - OPENED).total_seconds() / 86400, 2)
+
+
+async def summary_between(client, start, end):
+    result = await client.get(
+        f"/kanban/metrics/summary?start={start}&end={end}&period=day"
+    )
+    assert result.status_code == 200, result.text
+    return result.json()["current"]

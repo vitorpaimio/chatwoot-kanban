@@ -19,7 +19,7 @@ import httpx
 from app.chatwoot_client import Chatwoot
 from app.database import close_pool, connection, init_pool, lock_contact, record
 from app.routers.workspace import BRAZIL
-from app.services import apply_ad_origin, first_ad
+from app.services import LINK_PATTERN, apply_ad_origin, first_ad
 
 MAINTENANCE = {"id": None, "name": "Manutenção"}
 ACTION = "manutencao_metricas"
@@ -139,8 +139,58 @@ async def backfill_created(conn, account: int, day: date) -> int:
     return changed
 
 
-async def set_won_at(conn, account: int, card_id: int, day: date) -> bool:
-    """Registra a data real do ganho na última entrada da etapa de ganho."""
+async def fit_moves(conn, account: int, card, when: datetime, entry) -> list[dict]:
+    """Traz para antes do ganho os movimentos intermediários feitos depois dele.
+
+    Organizar o funil em massa depois do fato deixa movimentos com a data do dia
+    da organização. Eles são espalhados, na mesma ordem, entre o último registro
+    que já era anterior ao ganho (ou a criação) e a data real do ganho.
+    """
+    late = await conn.fetch(
+        """SELECT id,created_at FROM kb_card_events WHERE account_id=$1
+        AND card_id=$2 AND event_type='moved' AND id<>$3 AND created_at>=$4
+        AND (created_at,id)<($5,$3) ORDER BY created_at,id""",
+        account,
+        card["id"],
+        entry["id"],
+        when,
+        entry["created_at"],
+    )
+    if not late:
+        return []
+    floor = await conn.fetchval(
+        """SELECT max(created_at) FROM kb_card_events WHERE account_id=$1
+        AND card_id=$2 AND event_type IN ('created','moved') AND created_at<$3""",
+        account,
+        card["id"],
+        when,
+    )
+    floor = max(floor or card["created_at"], card["created_at"])
+    step = (when - floor) / (len(late) + 1)
+    changes = []
+    for i, event in enumerate(late):
+        moved = floor + step * (i + 1)
+        changes.append(
+            {"id": event["id"], "before": event["created_at"], "after": moved}
+        )
+        await conn.execute(
+            "UPDATE kb_card_events SET created_at=$3,entered_at=$3 "
+            "WHERE account_id=$1 AND id=$2",
+            account,
+            event["id"],
+            moved,
+        )
+    return changes
+
+
+async def set_won_at(
+    conn, account: int, card_id: int, day: date, fit: bool = False
+) -> bool:
+    """Registra a data real do ganho na última entrada da etapa de ganho.
+
+    Com ``fit``, movimentos intermediários posteriores à data do ganho são
+    trazidos para antes dele; sem ``fit``, a data é recusada.
+    """
     when = noon(day)
     card = await conn.fetchrow(
         """SELECT c.*,s.kind FROM kb_cards c JOIN kb_stages s ON
@@ -169,10 +219,16 @@ async def set_won_at(conn, account: int, card_id: int, day: date) -> bool:
     )
     if when > datetime.now(UTC):
         raise SystemExit(f"Cartão {card_id}: data no futuro")
-    if when < card["created_at"] or (previous and when < previous):
+    if when < card["created_at"]:
         raise SystemExit(
-            f"Cartão {card_id}: {day:%d/%m/%Y} é anterior à criação ou ao "
-            "movimento anterior; corrija a criação antes (--backfill-created)"
+            f"Cartão {card_id}: {day:%d/%m/%Y} é anterior à criação; corrija a "
+            "criação antes (--backfill-created)"
+        )
+    if previous and when < previous and not fit:
+        raise SystemExit(
+            f"Cartão {card_id}: {day:%d/%m/%Y} é anterior ao movimento anterior; "
+            "use --fit-moves para trazer os movimentos intermediários para antes "
+            "do ganho"
         )
     if entry["created_at"] == when and card["won_at"] == when:
         return False
@@ -182,6 +238,12 @@ async def set_won_at(conn, account: int, card_id: int, day: date) -> bool:
     )
     async with conn.transaction():
         await lock_contact(conn, account, card["contact_id"])
+        fitted = await fit_moves(conn, account, card, when, entry) if fit else []
+        for change in fitted:
+            print(
+                f"Cartão {card_id}: movimento {change['before']:%d/%m/%Y %H:%M} -> "
+                f"{change['after']:%d/%m/%Y %H:%M}"
+            )
         await conn.execute(
             "UPDATE kb_card_events SET created_at=$3,entered_at=$3 "
             "WHERE account_id=$1 AND id=$2",
@@ -212,8 +274,15 @@ async def set_won_at(conn, account: int, card_id: int, day: date) -> bool:
             card["contact_id"],
             MAINTENANCE,
             ACTION,
-            {"won_at": entry["created_at"].isoformat()},
-            {"card_id": card_id, "won_at": when.isoformat()},
+            {
+                "won_at": entry["created_at"].isoformat(),
+                "moves": {str(c["id"]): c["before"].isoformat() for c in fitted},
+            },
+            {
+                "card_id": card_id,
+                "won_at": when.isoformat(),
+                "moves": {str(c["id"]): c["after"].isoformat() for c in fitted},
+            },
             card["funnel_id"],
             card["stage_id"],
             sync=False,
@@ -276,13 +345,14 @@ async def renumber_stages(conn, account: int) -> int:
 async def backfill_ad_origin(conn, account: int) -> int:
     """Procura o anúncio de Click-to-WhatsApp nas conversas de cada contato.
 
-    Só contatos sem origem de anúncio são consultados; a conversa mais antiga é
-    lida primeiro, porque a origem é a do primeiro contato.
+    Consulta contatos sem origem de anúncio e os que ficaram com um link como
+    campanha; a conversa mais antiga é lida primeiro (origem do primeiro contato).
     """
     contacts = await conn.fetch(
         """SELECT contact_id FROM kb_contacts WHERE account_id=$1
-        AND ad_source IS NULL ORDER BY contact_id""",
+        AND (ad_source IS NULL OR ad_campaign ~* $2) ORDER BY contact_id""",
         account,
+        LINK_PATTERN,
     )
     found = 0
     async with await Chatwoot.for_account(conn, account) as cw:
@@ -336,7 +406,7 @@ async def main(args: argparse.Namespace) -> None:
                     )
                     print(f"{label}: {total} cartões com a criação retroagida")
                 for card_id, day in args.won_at:
-                    await set_won_at(conn, args.account, card_id, day)
+                    await set_won_at(conn, args.account, card_id, day, args.fit_moves)
                 if args.ad_origin:
                     total = await backfill_ad_origin(conn, args.account)
                     print(f"{label}: {total} contatos com origem pelo anúncio")
@@ -364,6 +434,11 @@ def parser() -> argparse.ArgumentParser:
         default=[],
         metavar="CARTAO=AAAA-MM-DD",
         help="data real de um ganho; repita para vários cartões",
+    )
+    cli.add_argument(
+        "--fit-moves",
+        action="store_true",
+        help="com --won-at, traz para antes do ganho os movimentos feitos depois",
     )
     cli.add_argument(
         "--ad-origin",

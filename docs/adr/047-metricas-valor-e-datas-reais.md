@@ -59,6 +59,13 @@ versão: exigiria assinar `message_created`, que multiplica o volume de webhooks
 - A ajuda de "Leads novos" explica que conta negociações manuais, importadas e da
   entrada automática, conforme as caixas de cada funil.
 
+## Complemento: ganhos organizados em massa
+
+`--won-at` recusava a data real quando o cartão tinha sido movido em massa depois
+dela. Com `--fit-moves`, os movimentos intermediários posteriores à data do ganho
+são redistribuídos, na mesma ordem, entre o registro anterior e o ganho, e o
+histórico guarda as datas antigas e novas.
+
 ## Consequências
 
 - Receita e ticket passam a refletir o valor informado depois do ganho; o valor

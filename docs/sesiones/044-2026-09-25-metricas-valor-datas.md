@@ -46,3 +46,15 @@ seguida de organização do funil. Decisões no
   `/reports` removidos com a rota.
 - Validação: Ruff, 218 testes Python e JavaScript; Métricas no Chatwoot local
   mostrou "1 de 1 fechamento" e a tabela da equipe.
+
+## Retorno da operação na conta 8
+
+- `--won-at` recusou 23/09 e 25/09 porque os cartões foram movidos em massa depois;
+  criado `--fit-moves`.
+- Campanha "api.whatsapp.com" em 18 leads: título com cara de link passa a usar o
+  texto do anúncio ou "Anúncio {id}", e `--ad-origin` corrige as já gravadas.
+- "Sem resposta" como etapa aberta entra na ordem do funil. Recomendação: arquivar
+  (a etiqueta cumpre o papel); mover para depois de "Perdido" faria a ida para ela
+  contar como avanço.
+- Tempo por etapa dos movimentos em massa segue aproximado; `occurred_at` ou o uso
+  diário corrigem daqui em diante.
