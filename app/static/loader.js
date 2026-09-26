@@ -30,6 +30,11 @@
   let menu,
     collapsed,
     flyout = false;
+  // Barra recolhida: a lista fica no body, acima do painel do Kanban (mesmo
+  // z-index da barra); dentro da barra ela ficava escondida atrás dele.
+  let flyoutList = null,
+    hideTimer;
+  const pipelineList = () => (collapsed ? flyoutList : menu?.querySelector("ul"));
   let expanded = true;
   try {
     expanded = localStorage.getItem(storageKey) !== "false";
@@ -123,8 +128,8 @@
   const layout = () => {
     if (!sidebar) return;
     const edge = sidebar.getBoundingClientRect().right;
-    if (collapsed && flyout && menu) {
-      const list = menu.querySelector("ul");
+    if (collapsed && flyout && menu && flyoutList) {
+      const list = flyoutList;
       list.style.left = `${edge + 8}px`;
       list.style.top = `${Math.min(menu.getBoundingClientRect().top, innerHeight - 120)}px`;
     }
@@ -273,7 +278,8 @@
   const renderState = () => {
     if (!menu) return;
     const header = menu.querySelector("[data-pipeline-header]");
-    const list = menu.querySelector("ul");
+    const list = pipelineList();
+    if (!list) return;
     const visible = collapsed ? flyout : expanded;
     const base = header.dataset.baseClass;
     setAttribute(
@@ -358,7 +364,8 @@
     if (parked && parked.account !== selected) discard();
     if (!selected) {
       menu?.remove();
-      menu = null;
+      flyoutList?.remove();
+      menu = flyoutList = null;
       return;
     }
     const nav = document.querySelector("aside nav");
@@ -420,6 +427,8 @@
       return;
     }
     menu?.remove();
+    flyoutList?.remove();
+    flyoutList = null;
     collapsed = isCollapsed;
     flyout = false;
     const compact = groups.find((node) =>
@@ -441,7 +450,30 @@
       children.className =
         "fixed bg-n-alpha-3 backdrop-blur-[100px] outline outline-1 -outline-offset-1 w-56 outline-n-weak rounded-xl shadow-lg py-2 px-2 m-0 list-none";
       children.style.zIndex = "100";
-      menu.append(children);
+      document.body.append(children);
+      flyoutList = children;
+      // Como os grupos nativos recolhidos: abre ao passar o mouse e fecha pouco
+      // depois de sair do ícone e da lista.
+      const show = (event) => {
+        if (event.pointerType && event.pointerType !== "mouse") return;
+        clearTimeout(hideTimer);
+        if (flyout) return;
+        flyout = true;
+        renderState();
+        layout();
+      };
+      const hide = (event) => {
+        if (event.pointerType && event.pointerType !== "mouse") return;
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(() => {
+          flyout = false;
+          renderState();
+        }, 250);
+      };
+      for (const node of [header, children]) {
+        node.addEventListener("pointerenter", show);
+        node.addEventListener("pointerleave", hide);
+      }
     } else {
       header = menu.querySelector(':scope > [role="button"]');
       children = menu.querySelector(":scope > ul");
@@ -457,6 +489,14 @@
       label.parentElement.replaceChildren(label);
     }
     children.replaceChildren();
+    if (collapsed) {
+      // Título no topo, como nas listas nativas da barra recolhida.
+      const title = document.createElement("li");
+      title.className =
+        "px-2 pt-1 pb-2 text-xs font-medium uppercase tracking-wide text-n-slate-10";
+      title.textContent = "Pipeline";
+      children.append(title);
+    }
     children.id = "bee-pipeline-children";
     header.dataset.pipelineHeader = "";
     header.dataset.baseClass = header.className;
@@ -465,7 +505,11 @@
     header.setAttribute("aria-controls", children.id);
     icon(header, "square-kanban");
     action(header, "Pipeline", () => {
-      if (collapsed) flyout = !flyout;
+      // Recolhida: o clique só abre; fechar é sair com o mouse, Esc ou clicar fora.
+      if (collapsed) {
+        clearTimeout(hideTimer);
+        flyout = true;
+      }
       else {
         // Como o SidebarGroup do Chatwoot 4.18: sem página do Pipeline aberta,
         // o clique no grupo já abre o primeiro item; com página aberta, recolhe.
@@ -560,7 +604,8 @@
   document.addEventListener(
     "click",
     (event) => {
-      if (menu?.contains(event.target)) return;
+      if (menu?.contains(event.target) || flyoutList?.contains(event.target))
+        return;
       if (flyout) {
         flyout = false;
         renderState();
