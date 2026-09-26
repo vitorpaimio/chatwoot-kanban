@@ -90,8 +90,12 @@ python -m app.maintenance --account 8 --dry-run \
 `--backfill-created` recebe o dia da importação e leva a criação do primeiro cartão
 de cada contato para a abertura da conversa mais antiga no Chatwoot.
 `--won-at CARTAO=AAAA-MM-DD` registra a data real de um ganho (meio-dia de Brasília).
+Se o cartão foi movido em massa depois do ganho real, acrescente `--fit-moves`: os
+movimentos intermediários posteriores à data do ganho são espalhados, na mesma ordem,
+entre o registro anterior e o ganho.
 `--renumber-stages` desfaz posições repetidas. `--ad-origin` lê o anúncio de
-Click-to-WhatsApp das conversas dos contatos sem origem de anúncio. A simulação aplica tudo numa transação
+Click-to-WhatsApp das conversas dos contatos sem origem de anúncio e corrige campanhas
+que ficaram com um link ("api.whatsapp.com") no lugar do nome. A simulação aplica tudo numa transação
 e desfaz no fim; sem `--dry-run`, cada alteração é gravada e registrada em
 `kb_history` como `manutencao_metricas`. Rodar de novo não repete o que já foi feito.
 

@@ -6,6 +6,12 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+### Corrigido
+
+- `--won-at` aceita `--fit-moves` para cartões organizados em massa depois do ganho.
+- Campanha de anúncio com link no título ("api.whatsapp.com") usa o texto do
+  anúncio ou "Anúncio {id}"; `--ad-origin` corrige as já gravadas.
+
 ## [0.2.0-rc.5] — 2026-09-25
 
 Versão candidata com métricas corrigidas (valor, datas reais e conversão),

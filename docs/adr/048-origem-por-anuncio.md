@@ -31,6 +31,12 @@ mensagens.
 - Não foi adotada a assinatura de `message_created`: uma chamada por conversa nova
   basta para a origem, sem multiplicar os webhooks.
 
+## Complemento
+
+A Meta às vezes envia o próprio endereço como título ("api.whatsapp.com"). Título
+com cara de link não vira campanha: usa-se a primeira linha do texto do anúncio ou
+"Anúncio {id}". `--ad-origin` também revisa contatos cuja campanha gravada é um link.
+
 ## Consequências
 
 - Uma chamada a mais ao Chatwoot por conversa nova, em qualquer canal.

@@ -157,3 +157,44 @@ async def test_repair_fills_ad_origin_for_existing_leads(client, monkeypatch, ca
             "SELECT count(*) FROM kb_history WHERE action='origem_anuncio'"
         )
     assert tuple(card) == (AD_SOURCE, "Dr Thiago Virgili") and logged == 1
+
+
+def test_link_headline_is_not_a_campaign():
+    from app.services import ad_campaign
+
+    assert (
+        ad_campaign({"headline": "api.whatsapp.com", "body": "Consulta\nmais"})
+        == "Consulta"
+    )
+    assert ad_campaign({"headline": "https://wa.me/55", "source_id": "9"}) == (
+        "Anúncio 9"
+    )
+
+
+async def test_repair_replaces_link_campaign(client, monkeypatch, capsys):
+    remote = Remote({**REFERRAL, "headline": "api.whatsapp.com", "body": "Botox"})
+
+    async def request(_self, method, path, **kw):
+        return await remote.request(method, path, **kw)
+
+    async def keep_pool():
+        return None
+
+    monkeypatch.setattr(Chatwoot, "request", request)
+    monkeypatch.setattr(maintenance, "init_pool", keep_pool)
+    monkeypatch.setattr(maintenance, "close_pool", keep_pool)
+    async with connection() as conn:
+        await conn.execute(
+            "UPDATE kb_contacts SET ad_source=$1,ad_campaign='api.whatsapp.com' "
+            "WHERE account_id=1 AND contact_id=10",
+            AD_SOURCE,
+        )
+    args = maintenance.parser().parse_args(["--account", "1", "--ad-origin"])
+    await maintenance.main(args)
+    await maintenance.main(args)
+    async with connection() as conn:
+        campaign = await conn.fetchval(
+            "SELECT campaign FROM kb_cards WHERE account_id=1 AND contact_id=10"
+        )
+    assert campaign == "Botox"
+    assert "Aplicado: 0 contatos" in capsys.readouterr().out

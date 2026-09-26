@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
@@ -217,6 +218,20 @@ async def apply_remote_stage(conn, account: int, contact_id: int, value) -> bool
 
 
 AD_SOURCE = "Anúncio (Click-to-WhatsApp)"
+# Título que é só endereço (a Meta às vezes manda "api.whatsapp.com") não nomeia
+# o anúncio. Mesma regra no SQL, para corrigir campanhas já gravadas.
+LINK_PATTERN = (
+    r"^\s*(https?://|www\.)|^\s*[a-z0-9.-]+\.(com|net|org|br|me|ly)(/\S*)?\s*$"
+)
+
+
+def ad_campaign(referral: dict) -> str | None:
+    """Nome da campanha: título, texto do anúncio ou identificador."""
+    for text in (referral.get("headline"), referral.get("body")):
+        line = (text or "").strip().splitlines()[0].strip() if text else ""
+        if line and not re.search(LINK_PATTERN, line, re.IGNORECASE):
+            return line[:200]
+    return f"Anúncio {referral['source_id']}" if referral.get("source_id") else None
 
 
 def ad_referral(messages: list[dict]) -> dict | None:
@@ -246,14 +261,14 @@ async def apply_ad_origin(conn, account: int, contact_id: int, referral: dict) -
     O gatilho de dimensões leva origem e campanha às negociações do contato, a
     menos que o atributo mapeado nas Configurações esteja preenchido.
     """
-    campaign = (referral.get("headline") or "").strip()[:200] or (
-        f"Anúncio {referral['source_id']}" if referral.get("source_id") else None
-    )
+    campaign = ad_campaign(referral)
     seen = referral.get("created_at")
+    # Só grava no primeiro contato; a exceção é corrigir campanha que era um link.
     applied = await conn.fetchval(
-        """UPDATE kb_contacts SET ad_source=$3,ad_campaign=$4,ad_id=$5,
-        ad_click_id=$6,ad_seen_at=$7 WHERE account_id=$1 AND contact_id=$2
-        AND ad_source IS NULL RETURNING contact_id""",
+        """UPDATE kb_contacts SET ad_source=$3,ad_campaign=$4::text,ad_id=$5,
+        ad_click_id=$6,ad_seen_at=coalesce(ad_seen_at,$7) WHERE account_id=$1
+        AND contact_id=$2 AND (ad_source IS NULL OR (ad_campaign ~* $8::text
+        AND $4::text IS NOT NULL AND $4::text !~* $8::text)) RETURNING contact_id""",
         account,
         contact_id,
         AD_SOURCE,
@@ -261,6 +276,7 @@ async def apply_ad_origin(conn, account: int, contact_id: int, referral: dict) -
         str(referral.get("source_id") or "")[:100] or None,
         str(referral.get("ctwa_clid") or "")[:200] or None,
         datetime.fromtimestamp(seen, UTC) if isinstance(seen, (int, float)) else None,
+        LINK_PATTERN,
     )
     if applied:
         await record(
