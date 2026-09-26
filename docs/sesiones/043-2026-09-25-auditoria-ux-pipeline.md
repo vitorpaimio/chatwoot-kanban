@@ -250,6 +250,31 @@ As decisões estão no ADR-045.
     foram executados.
 - **Capturas:** `depois/27` (cartões) e `depois/28` (barra), nos dois temas.
 
+## Menu ausente com a barra lateral recolhida
+
+- **Sintoma:** com o Chatwoot aberto e a barra recolhida,
+  `window.__chatwootKanbanInstalled` era `true` e `aside nav` existia, mas
+  `#chatwoot-kanban-menu` não aparecia.
+- **Causa:** a hipótese inicial (`templates` só preenchido com a barra expandida)
+  não se confirmou. O modo recolhido já monta o menu a partir do botão compacto.
+  O problema estava no agendamento: o `MutationObserver` chamava `install()`
+  apenas por `requestAnimationFrame`, que o navegador não executa com a aba
+  oculta. A primeira chamada ocorre antes de o `nav` existir. As mutações
+  seguintes ficavam presas em `scheduled = true`, e o menu só surgia quando a aba
+  voltava a ser desenhada.
+- **Correção:** `loader.js` agenda a mesma execução por `requestAnimationFrame`
+  e por `setTimeout(…, 100)`. A que ocorrer primeiro instala o menu, e a outra
+  não faz nada.
+- **Validação:**
+  - `tests/test_interface.cjs` executa o loader em `vm` sem
+    `requestAnimationFrame`. O teste falha na versão anterior.
+  - No Chatwoot local, com `requestAnimationFrame` bloqueado e a barra recolhida
+    desde a carga, o loader anterior não montou o menu em 10 s. O corrigido
+    montou o ícone em cerca de 3 s.
+  - Também foi verificado: flyout com as quatro páginas, abertura do Kanban,
+    expansão (grupo Pipeline com subitens), abertura pelo grupo, novo
+    recolhimento com o ícone ativo e o painel em 56 px, nos temas escuro e claro.
+
 ## Próximos passos
 
 - Rodar os testes com o Chatwoot real 4.18 (`board-design`, `sidebar`, `live`,

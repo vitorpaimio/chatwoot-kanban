@@ -579,19 +579,23 @@
     if (event.target === sidebar) layout();
   });
   let scheduled = false;
+  const run = () => {
+    if (!scheduled) return;
+    scheduled = false;
+    observer.disconnect();
+    try {
+      install();
+      layout();
+    } finally {
+      observe();
+    }
+  };
+  // Aba oculta não executa requestAnimationFrame: o temporizador garante o menu.
   const observer = new MutationObserver(() => {
     if (scheduled) return;
     scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      observer.disconnect();
-      try {
-        install();
-        layout();
-      } finally {
-        observe();
-      }
-    });
+    requestAnimationFrame(run);
+    setTimeout(run, 100);
   });
   const observe = () =>
     observer.observe(document.documentElement, {
