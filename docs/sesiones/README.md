@@ -61,3 +61,4 @@ Formato: `<número>-<data>-<assunto>.md`.
 - [Sessão 041 — Criação automática de negociações](041-2026-09-25-criacao-automatica.md)
 - [Sessão 042 — Carregamento do quadro e responsável](042-2026-09-25-carregamento-quadro.md)
 - [Sessão 043 — Auditoria de UX do Pipeline](043-2026-09-25-auditoria-ux-pipeline.md)
+- [Sessão 044 — Métricas: valor, conversão e datas reais](044-2026-09-25-metricas-valor-datas.md)

@@ -65,3 +65,4 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 - [ADR-044 — Clique no menu Pipeline e filtros no padrão do Chatwoot 4.18](044-menu-e-filtros-chatwoot-418.md)
 - [ADR-045 — Páginas Tarefas e Configurações, ações do funil e rolagem do quadro](045-paginas-tarefas-configuracoes.md)
 - [ADR-046 — Métricas no padrão do Chatwoot 4.18](046-metricas-padrao-chatwoot-418.md)
+- [ADR-047 — Valor da passagem, conversão sem perda e datas reais](047-metricas-valor-e-datas-reais.md)

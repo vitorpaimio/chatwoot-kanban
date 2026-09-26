@@ -87,11 +87,13 @@ async def import_one(conn: Connection, cw: Chatwoot) -> bool:
                 )
                 if not exists:
                     card_id = await conn.fetchval(
+                        # O lead nasce no primeiro contato, não no dia da importação.
                         """INSERT INTO
                            kb_cards(account_id,contact_id,funnel_id,stage_id,created_by,
-                        conversation_id,conversation_inbox_id)
+                        conversation_id,conversation_inbox_id,created_at)
                         SELECT
-                        account_id,contact_id,$3,$4,$5,conversation_id,inbox_id
+                        account_id,contact_id,$3,$4,$5,conversation_id,inbox_id,
+                        least(coalesce(first_seen_at,now()),now())
                         FROM kb_contacts WHERE account_id=$1 AND contact_id=$2
                         RETURNING id""",
                         cw.account,

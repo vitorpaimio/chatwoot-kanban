@@ -78,6 +78,22 @@ Para atualizar metadados dos contatos já instalados, sem mover cards, execute:
 PYTHONPATH=. .venv/bin/python scripts/refresh_metric_dimensions.py
 ```
 
+Para corrigir dados gravados antes da migração 014 (valor, data dos leads importados
+e data real de ganhos), rode dentro do container do Kanban, primeiro em simulação:
+
+```sh
+python -m app.maintenance --account 8 --dry-run \
+  --backfill-created 2026-09-25 --renumber-stages \
+  --won-at 12=2026-09-23 --won-at 57=2026-09-23 --won-at 101=2026-09-25
+```
+
+`--backfill-created` recebe o dia da importação e leva a criação do primeiro cartão
+de cada contato para a abertura da conversa mais antiga no Chatwoot.
+`--won-at CARTAO=AAAA-MM-DD` registra a data real de um ganho (meio-dia de Brasília).
+`--renumber-stages` desfaz posições repetidas. A simulação aplica tudo numa transação
+e desfaz no fim; sem `--dry-run`, cada alteração é gravada e registrada em
+`kb_history` como `manutencao_metricas`. Rodar de novo não repete o que já foi feito.
+
 O histórico antigo só é reconstruído a partir de movimentos efetivamente registrados.
 Dimensões/valores ausentes continuam desconhecidos; o retrato atual começa na migração.
 Não são inventadas durações anteriores à importação. A restauração exige backup próprio, parada dos serviços e o

@@ -24,15 +24,28 @@ WITH snapshot AS (
 ), events AS (
  SELECT e.* FROM kb_card_events e JOIN cards c ON c.id=e.card_id
  WHERE e.account_id=$1 AND e.created_at<$3 AND e.created_at<=now()
+), stays AS (
+ SELECT e.*,lead(e.created_at) OVER(PARTITION BY e.card_id ORDER BY e.created_at,e.id)
+ AS left_at FROM events e WHERE e.event_type IN ('created','moved')
 ), entries AS (
- SELECT * FROM events WHERE event_type IN ('created','moved')
+ -- Valor da passagem pela etapa: o último registrado antes de sair dela, não o da
+ -- entrada. Ganhar e depois informar o valor é o fluxo comum.
+ SELECT st.id,st.account_id,st.card_id,st.event_type,st.stage_id,
+ st.previous_stage_id,st.stage_kind,st.stage_position,
+ coalesce((SELECT v.value_cents FROM events v WHERE v.card_id=st.card_id
+ AND (v.created_at,v.id)>=(st.created_at,st.id)
+ AND (st.left_at IS NULL OR v.created_at<st.left_at)
+ ORDER BY v.created_at DESC,v.id DESC LIMIT 1),st.value_cents) AS value_cents,
+ st.lost_reason,st.assignee_id,st.inbox_id,st.source,st.campaign,st.temperature,
+ st.entered_at,st.created_at,st.left_at
+ FROM stays st
 ), wins AS (
  SELECT DISTINCT ON(card_id) * FROM entries WHERE stage_kind='won' AND created_at >=$2
- ORDER BY card_id,created_at,id
+ ORDER BY card_id,created_at DESC,id DESC
 ), losses AS (
  SELECT DISTINCT ON(card_id) * FROM entries WHERE stage_kind='lost' AND created_at
  >=$2
- ORDER BY card_id,created_at,id
+ ORDER BY card_id,created_at DESC,id DESC
 ), task_scope AS (
  SELECT t.* FROM kb_tasks t WHERE t.account_id=$1 AND t.created_at<$3
  AND (($4::bigint IS NULL AND $5::integer IS NULL AND $6::integer IS NULL)
@@ -84,20 +97,29 @@ FUNNEL = (
 SELECT s.id,s.funnel_id,f.name AS funnel,s.name,s.position,s.color,s.kind,
  count(co.card_id) AS quantity,coalesce(sum(co.value_cents),0) AS value,
  coalesce(100.0*count(co.card_id) FILTER(WHERE EXISTS(
- SELECT 1 FROM kb_card_events later WHERE later.account_id=$1 AND
- later.card_id=co.card_id
+ SELECT 1 FROM kb_card_events later JOIN kb_stages ls ON
+ (ls.account_id,ls.id)=(later.account_id,later.stage_id)
+ WHERE later.account_id=$1 AND later.card_id=co.card_id
  AND later.event_type IN ('created','moved') AND (later.created_at,
- later.id)>(co.created_at,co.id)
- AND later.created_at<=now() AND
- later.stage_position>co.stage_position))/nullif(count(co.card_id),0),0) AS
- conversion,
+ later.id)>(co.created_at,co.id) AND later.created_at<=now()
+ AND ls.kind<>'lost' AND (ls.position,ls.id)>(s.position,s.id)
+ ))/nullif(count(co.card_id),0),0) AS conversion,
+ coalesce(100.0*count(co.card_id) FILTER(WHERE EXISTS(
+ SELECT 1 FROM kb_card_events later JOIN kb_stages ls ON
+ (ls.account_id,ls.id)=(later.account_id,later.stage_id)
+ WHERE later.account_id=$1 AND later.card_id=co.card_id
+ AND later.event_type IN ('created','moved') AND (later.created_at,
+ later.id)>(co.created_at,co.id) AND later.created_at<=now()
+ AND ls.kind='lost'
+ ))/nullif(count(co.card_id),0),0) AS loss_rate,
  coalesce(100.0*count(co.card_id) FILTER(WHERE EXISTS(
  SELECT 1 FROM kb_card_events later WHERE later.account_id=$1 AND
  later.card_id=co.card_id
  AND later.event_type IN ('created','moved') AND (later.created_at,
  later.id)>(co.created_at,co.id)
  AND later.created_at<=now() AND later.stage_id=(SELECT ns.id FROM kb_stages ns
- WHERE ns.account_id=$1 AND ns.funnel_id=s.funnel_id AND ns.position>s.position
+ WHERE ns.account_id=$1 AND ns.funnel_id=s.funnel_id AND NOT ns.archived
+ AND ns.kind<>'lost' AND (ns.position,ns.id)>(s.position,s.id)
  ORDER BY ns.position,ns.id LIMIT 1)
  ))/nullif(count(co.card_id),0),0) AS next_conversion,
  (SELECT avg(extract(epoch FROM (sp.exited_at-sp.created_at))/86400) FROM spans sp

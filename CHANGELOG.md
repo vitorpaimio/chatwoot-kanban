@@ -6,6 +6,24 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+### Corrigido
+
+- Receita, ticket médio, perdas e valor por etapa usam o valor registrado
+  enquanto a negociação estava na etapa, não o do instante da entrada (ADR-047).
+- A conversão de etapa não conta a ida para uma etapa de perda; nova coluna
+  "Perda" no funil (ADR-047).
+- Editar só o valor pela janela da negociação não move mais o cartão para o fim
+  da coluna (`PATCH /kanban/cards/{id}/value`).
+- A importação cria o lead na data do primeiro contato, não na da importação.
+- Etapas não ficam mais com posições repetidas no mesmo funil.
+
+### Adicionado
+
+- Data real do movimento (`occurred_at`), para administradores.
+- Comando `python -m app.maintenance` para reparar métricas de dados já gravados,
+  com `--dry-run`.
+- Aviso de configuração nos painéis de origem ou campanha sem atributo mapeado.
+
 ## [0.2.0-rc.4] — 2026-09-25
 
 Versão candidata com a interface do Pipeline alinhada ao Chatwoot 4.18.

@@ -4,9 +4,10 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -73,6 +74,38 @@ class Move(Input):
     stage_id: int = Field(gt=0)
     before_id: int | None = None
     value_cents: int | None = Field(default=None, ge=0, le=999_999_999_99)
+    # Data real do movimento, para organizar o funil depois do fato.
+    occurred_at: datetime | None = None
+
+
+class CardValue(Input):
+    version: int = Field(gt=0)
+    value_cents: int = Field(ge=0, le=999_999_999_99)
+
+
+BRAZIL = ZoneInfo("America/Sao_Paulo")
+
+
+async def occurred_at(card, when: datetime | None, user) -> datetime | None:
+    """Valida a data informada para um movimento; só administradores podem usá-la.
+
+    Sem fuso, a data é lida no horário de Brasília. Não pode estar no futuro nem
+    antes da criação da negociação ou da entrada na etapa atual.
+    """
+    if when is None:
+        return None
+    administrator(user)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=BRAZIL)
+    if when > datetime.now(UTC):
+        raise HTTPException(422, "A data do movimento não pode estar no futuro")
+    if when < card["created_at"] or when < card["stage_entered_at"]:
+        raise HTTPException(
+            422,
+            "A data do movimento não pode ser anterior à criação da negociação "
+            "nem à entrada na etapa atual",
+        )
+    return when
 
 
 class Task(Input):
@@ -417,6 +450,14 @@ async def create_stage(funnel_id: int, body: Stage, user=AUTH):
                 funnel_id,
             )
         )
+        if await conn.fetchval(
+            """SELECT 1 FROM kb_stages WHERE account_id=$1 AND funnel_id=$2
+            AND position=$3 AND NOT archived""",
+            user["account"],
+            funnel_id,
+            body.position,
+        ):
+            raise HTTPException(409, "Já existe uma etapa nesta posição do funil")
         sid = await conn.fetchval(
             (
                 """
@@ -449,6 +490,24 @@ async def create_stage(funnel_id: int, body: Stage, user=AUTH):
 async def edit_stage(stage_id: int, body: Stage, user=AUTH):
     administrator(user)
     async with connection(user) as conn, conn.transaction():
+        current = require(
+            await conn.fetchrow(
+                "SELECT funnel_id,position FROM kb_stages WHERE account_id=$1 "
+                "AND id=$2 AND NOT archived FOR UPDATE",
+                user["account"],
+                stage_id,
+            )
+        )
+        # Posição ocupada vira troca: a ordem das métricas depende de posições únicas.
+        await conn.execute(
+            """UPDATE kb_stages SET position=$4 WHERE account_id=$1 AND funnel_id=$2
+            AND position=$3 AND id<>$5 AND NOT archived""",
+            user["account"],
+            current["funnel_id"],
+            body.position,
+            current["position"],
+            stage_id,
+        )
         row = require(
             await conn.fetchrow(
                 (
@@ -749,6 +808,9 @@ async def move_card(conn, card_id, body, user):
         loss_reason = await validate_loss(
             conn, account, body.stage_id, body.lost_reason
         )
+    when = await occurred_at(card, body.occurred_at, user)
+    if when and body.stage_id == card["stage_id"]:
+        raise HTTPException(422, "A data do movimento só vale ao mudar de etapa")
     ordered = await conn.fetch(
         (
             """
@@ -777,6 +839,11 @@ async def move_card(conn, card_id, body, user):
             )
         position = Decimal(index * 1024 + 512)
     value = body.value_cents if body.value_cents is not None else card["value_cents"]
+    if when:
+        # Os gatilhos de histórico usam esta data no evento e na entrada da etapa.
+        await conn.execute(
+            "SELECT set_config('kanban.occurred_at',$1,true)", when.isoformat()
+        )
     await conn.execute(
         (
             """
@@ -793,6 +860,8 @@ async def move_card(conn, card_id, body, user):
         value,
         loss_reason,
     )
+    if when:
+        await conn.execute("SELECT set_config('kanban.occurred_at','',true)")
     await conn.execute(
         """
         UPDATE kb_contacts SET last_card_id=$3 WHERE account_id=$1 AND
@@ -818,6 +887,7 @@ async def move_card(conn, card_id, body, user):
             "stage_id": body.stage_id,
             "value_cents": value,
             "lost_reason": loss_reason,
+            **({"occurred_at": when.isoformat()} if when else {}),
         },
         card["funnel_id"],
         body.stage_id,
@@ -930,6 +1000,52 @@ async def move(card_id: int, body: Move, user=AUTH):
     async with connection(user) as conn, conn.transaction():
         await move_card(conn, card_id, body, user)
     return {"ok": True}
+
+
+@router.patch("/cards/{card_id}/value")
+async def set_card_value(card_id: int, body: CardValue, user=AUTH):
+    """Altera só o valor: etapa, posição e data de entrada ficam como estão."""
+    account = user["account"]
+    async with connection(user) as conn, conn.transaction():
+        card = require(
+            await conn.fetchrow(
+                "SELECT * FROM kb_visible_cards WHERE account_id=$1 AND id=$2",
+                account,
+                card_id,
+            )
+        )
+        await lock_contact(conn, account, card["contact_id"])
+        card = require(
+            await conn.fetchrow(
+                "SELECT * FROM kb_visible_cards WHERE account_id=$1 AND id=$2",
+                account,
+                card_id,
+            )
+        )
+        if card["version"] != body.version:
+            raise HTTPException(
+                409, "Cartão alterado por outra pessoa. Atualize o quadro."
+            )
+        version = await conn.fetchval(
+            "UPDATE kb_cards SET value_cents=$3,version=version+1 "
+            "WHERE account_id=$1 AND id=$2 RETURNING version",
+            account,
+            card_id,
+            body.value_cents,
+        )
+        await record(
+            conn,
+            account,
+            card["contact_id"],
+            user,
+            "valor_atualizado",
+            {"value_cents": card["value_cents"]},
+            {"card_id": card_id, "value_cents": body.value_cents},
+            card["funnel_id"],
+            card["stage_id"],
+            sync=False,
+        )
+    return {"version": version}
 
 
 class ConversationLink(Input):
