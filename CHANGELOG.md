@@ -15,6 +15,8 @@ Versão candidata com ajustes no reparo de métricas.
 - `--won-at` aceita `--fit-moves` para cartões organizados em massa depois do ganho.
 - Campanha de anúncio com link no título ("api.whatsapp.com") usa o texto do
   anúncio ou "Anúncio {id}"; `--ad-origin` corrige as já gravadas.
+- Com a barra lateral do Chatwoot recolhida, o menu Pipeline abre ao passar o
+  mouse, como os menus nativos, e aparece por cima do Kanban aberto.
 
 ## [0.2.0-rc.5] — 2026-09-25
 
