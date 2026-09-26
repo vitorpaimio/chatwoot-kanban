@@ -28,6 +28,8 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 - Tamanho da amostra junto da taxa de ganho.
 - Origem e campanha preenchidas pelo anúncio de Click-to-WhatsApp, sem
   configuração; `--ad-origin` no comando de manutenção (ADR-048).
+- Métricas comerciais: previsão de receita ponderada, passagem entre etapas,
+  chance de ganho por etapa e receita e perdas no tempo (ADR-049).
 
 ### Removido
 

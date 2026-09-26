@@ -131,6 +131,8 @@ async def test_summary_exact_definitions(client, metric_data):
         "average_ticket": 10000,
         "open_value": 70000,
         "cycle_days": 12,
+        # Novo: 1 ganho e 1 perda entre as que passaram (50%) x R$ 700 em aberto.
+        "forecast": 35000,
     }
     assert r["previous"]["wins"] == 0
     assert r["variation"]["leads"] is None
@@ -359,3 +361,21 @@ async def test_win_credited_to_closer_after_reassignment(client, metric_data):
     }
     assert rows[3]["wins"] == 1 and rows[3]["revenue"] == 10000
     assert 5 not in rows or rows[5]["wins"] == 0
+
+
+async def test_flow_and_win_probability(client, metric_data):
+    r = (await block(client, "funnel"))["current"]
+    flow = {step["name"]: step["reached"] for step in r["flow"]}
+    # Leads do período: dia 10 (foi para Perdido) e dia 12 (continua em Novo).
+    assert flow == {"Novo": 2, "Proposta": 0, "Ganho": 0}
+    novo = next(s for s in r["rows"] if s["id"] == metric_data["novo"])
+    proposal = next(s for s in r["rows"] if s["id"] == metric_data["proposal"])
+    assert novo["win_probability"] == 50 and proposal["win_probability"] == 100
+
+
+async def test_timeline_money(client, metric_data):
+    rows = (await block(client, "timeline"))["current"]["rows"]
+    by_day = {r["date"]: r for r in rows}
+    assert by_day["2026-08-13"]["revenue"] == 10000
+    assert by_day["2026-08-12"]["losses"] == 1
+    assert by_day["2026-08-12"]["lost_value"] == 20000

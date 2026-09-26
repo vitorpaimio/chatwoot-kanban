@@ -52,8 +52,19 @@ WITH snapshot AS (
  OR EXISTS(SELECT 1 FROM cards c WHERE c.contact_id=t.contact_id))
 )
 """
+PROBABILITIES = """
+, probabilities AS (
+ -- Chance histórica: das negociações que passaram pela etapa e já fecharam,
+ -- quantas foram ganhas.
+ SELECT x.stage_id,count(DISTINCT x.card_id) FILTER(WHERE cx.stage_kind='won')
+ ::numeric/nullif(count(DISTINCT x.card_id) FILTER(WHERE cx.stage_kind IN
+ ('won','lost')),0) AS chance
+ FROM entries x JOIN cards cx ON cx.id=x.card_id GROUP BY x.stage_id
+)
+"""
 SUMMARY = (
     BASE
+    + PROBABILITIES
     + """
 SELECT
  (SELECT count(*) FROM cards WHERE created_at >=$2) AS leads,
@@ -67,7 +78,10 @@ SELECT
  (SELECT coalesce(sum(value_cents),0) FROM cards WHERE stage_kind='open') AS
  open_value,
  (SELECT avg(extract(epoch FROM (w.created_at-c.created_at))/86400) FROM wins w
- JOIN cards c ON c.id=w.card_id) AS cycle_days
+ JOIN cards c ON c.id=w.card_id) AS cycle_days,
+ (SELECT coalesce(round(sum(c.value_cents*coalesce(pr.chance,0))),0) FROM cards c
+ LEFT JOIN probabilities pr ON pr.stage_id=c.stage_id WHERE c.stage_kind='open')
+ AS forecast
 """
 )
 TASKS = (
@@ -86,6 +100,7 @@ FROM task_scope
 )
 FUNNEL = (
     BASE
+    + PROBABILITIES
     + """
 , cohorts AS (
  SELECT DISTINCT ON(card_id,stage_id) * FROM entries WHERE created_at >=$2
@@ -123,11 +138,41 @@ SELECT s.id,s.funnel_id,f.name AS funnel,s.name,s.position,s.color,s.kind,
  ORDER BY ns.position,ns.id LIMIT 1)
  ))/nullif(count(co.card_id),0),0) AS next_conversion,
  (SELECT avg(extract(epoch FROM (sp.exited_at-sp.created_at))/86400) FROM spans sp
- WHERE sp.stage_id=s.id AND sp.exited_at >=$2 AND sp.exited_at<$3) AS dwell_days
+ WHERE sp.stage_id=s.id AND sp.exited_at >=$2 AND sp.exited_at<$3) AS dwell_days,
+ (SELECT 100*chance FROM probabilities pr WHERE pr.stage_id=s.id) AS win_probability
 FROM kb_stages s JOIN kb_funnels f ON (f.account_id,f.id)=(s.account_id,s.funnel_id)
 LEFT JOIN cohorts co ON co.stage_id=s.id
 WHERE s.account_id=$1 AND ($4::bigint IS NULL OR s.funnel_id=$4)
 GROUP BY s.id,f.name ORDER BY s.funnel_id,s.position,s.id
+"""
+)
+FLOW = (
+    BASE
+    + """
+, cohort AS (
+ SELECT id FROM cards WHERE created_at >=$2
+), reach AS (
+ SELECT DISTINCT e.card_id,t.funnel_id,t.kind,t.position,t.id AS stage_id
+ FROM entries e JOIN cohort c ON c.id=e.card_id
+ JOIN kb_stages t ON (t.account_id,t.id)=($1,e.stage_id)
+)
+-- Leads do período que chegaram a cada etapa aberta (ou além) e ao ganho.
+-- Etapas de perda ficam fora: a passagem só mede avanço.
+SELECT * FROM (
+ SELECT s.id,s.funnel_id,s.name,s.color,s.kind,s.position,
+ (SELECT count(DISTINCT r.card_id) FROM reach r WHERE r.funnel_id=s.funnel_id
+ AND (r.kind='won' OR (r.kind='open' AND (r.position,r.stage_id)>=(s.position,s.id))))
+ AS reached
+ FROM kb_stages s JOIN kb_funnels f ON (f.account_id,f.id)=(s.account_id,s.funnel_id)
+ WHERE s.account_id=$1 AND ($4::bigint IS NULL OR s.funnel_id=$4)
+ AND NOT s.archived AND NOT f.archived AND s.kind='open'
+ UNION ALL
+ SELECT NULL,f.id,'Ganho',NULL,'won',NULL,
+ (SELECT count(DISTINCT r.card_id) FROM reach r WHERE r.funnel_id=f.id
+ AND r.kind='won')
+ FROM kb_funnels f WHERE f.account_id=$1 AND ($4::bigint IS NULL OR f.id=$4)
+ AND NOT f.archived
+) steps ORDER BY funnel_id,position NULLS LAST,id
 """
 )
 STALE = (
@@ -218,7 +263,13 @@ SELECT d::date AS date,
  (SELECT count(*) FROM cards c WHERE (c.created_at AT TIME ZONE
  'America/Sao_Paulo')::date=d::date) AS leads,
  (SELECT count(*) FROM wins w WHERE (w.created_at AT TIME ZONE
- 'America/Sao_Paulo')::date=d::date) AS wins
+ 'America/Sao_Paulo')::date=d::date) AS wins,
+ (SELECT coalesce(sum(w.value_cents),0) FROM wins w WHERE (w.created_at AT TIME ZONE
+ 'America/Sao_Paulo')::date=d::date) AS revenue,
+ (SELECT count(*) FROM losses l WHERE (l.created_at AT TIME ZONE
+ 'America/Sao_Paulo')::date=d::date) AS losses,
+ (SELECT coalesce(sum(l.value_cents),0) FROM losses l WHERE (l.created_at AT TIME
+ ZONE 'America/Sao_Paulo')::date=d::date) AS lost_value
 FROM generate_series(($2 AT TIME ZONE 'America/Sao_Paulo')::date,(($3 AT TIME ZONE
  'America/Sao_Paulo')::date-1),interval '1 day') d
 ORDER BY d

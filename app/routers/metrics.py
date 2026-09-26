@@ -184,6 +184,7 @@ async def calculate(conn, block, args):
     result = {"rows": [dict(r) for r in await conn.fetch(sql, *args)]}
     if block == "funnel":
         result["stale"] = [dict(r) for r in await conn.fetch(queries.STALE, *args)]
+        result["flow"] = [dict(r) for r in await conn.fetch(queries.FLOW, *args)]
     if block == "sources":
         for dimension in ("origins", "campaigns"):
             result[dimension] = [

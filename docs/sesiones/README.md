@@ -63,3 +63,4 @@ Formato: `<número>-<data>-<assunto>.md`.
 - [Sessão 043 — Auditoria de UX do Pipeline](043-2026-09-25-auditoria-ux-pipeline.md)
 - [Sessão 044 — Métricas: valor, conversão e datas reais](044-2026-09-25-metricas-valor-datas.md)
 - [Sessão 045 — Origem pelo anúncio](045-2026-09-25-origem-anuncio.md)
+- [Sessão 046 — Visão comercial nas métricas](046-2026-09-25-visao-comercial.md)
