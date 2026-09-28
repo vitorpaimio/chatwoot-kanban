@@ -6,6 +6,17 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+## [0.2.0-rc.7] — 2026-09-28
+
+Versão candidata com transferência de negociações entre funis.
+
+### Adicionado
+
+- Transferir negociação para outro funil, pelo cartão ou em lote pela coluna,
+  com filtro de dias sem atividade. O destino é um cartão novo ligado à origem;
+  a origem pode ficar na etapa, ir para outra etapa do funil ou ser encerrada
+  sem contar como ganho nem perda (ADR-050, migração 016).
+
 ## [0.2.0-rc.6] — 2026-09-25
 
 Versão candidata com ajustes no reparo de métricas.
