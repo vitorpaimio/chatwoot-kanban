@@ -32,8 +32,8 @@ async def projection(conn, account, contact):
         kb_cards c JOIN kb_funnels f ON
         (f.account_id,f.id)=(c.account_id,c.funnel_id) JOIN kb_stages s ON
         (s.account_id,s.id)=(c.account_id,c.stage_id) WHERE c.account_id=$1
-        AND c.contact_id=$2 AND NOT f.archived AND NOT EXISTS
-        (SELECT 1 FROM kb_card_deletions d WHERE
+        AND c.contact_id=$2 AND NOT f.archived AND c.transferred_at IS NULL
+        AND NOT EXISTS (SELECT 1 FROM kb_card_deletions d WHERE
          (d.account_id,d.card_id)=(c.account_id,c.id)) ORDER BY c.id DESC
         """
         ),
@@ -148,8 +148,8 @@ async def apply_remote_stage(conn, account: int, contact_id: int, value) -> bool
         """SELECT c.* FROM kb_cards c JOIN kb_contacts ct ON
         (ct.account_id,ct.contact_id)=(c.account_id,c.contact_id)
         WHERE c.account_id=$1 AND c.contact_id=$2 AND c.funnel_id=$3
-        AND NOT EXISTS (SELECT 1 FROM kb_card_deletions d WHERE
-        (d.account_id,d.card_id)=(c.account_id,c.id))
+        AND c.transferred_at IS NULL AND NOT EXISTS (SELECT 1 FROM
+        kb_card_deletions d WHERE (d.account_id,d.card_id)=(c.account_id,c.id))
         ORDER BY c.id=ct.last_card_id DESC,c.id DESC LIMIT 1""",
         account,
         contact_id,

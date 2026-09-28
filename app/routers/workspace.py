@@ -25,6 +25,7 @@ from app.security import administrator, decrypt, encrypt, identity
 from app.services import refresh_contact, task_state
 
 AUTH = Depends(identity)
+TRANSFER_LIMIT = 200
 
 router = APIRouter(prefix="/kanban")
 
@@ -80,6 +81,29 @@ class Move(Input):
 class CardValue(Input):
     version: int = Field(gt=0)
     value_cents: int = Field(ge=0, le=999_999_999_99)
+
+
+class TransferTarget(Input):
+    funnel_id: int = Field(gt=0)
+    stage_id: int = Field(gt=0)
+    lost_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    # keep: a origem fica na etapa; stage: vai para origin_stage_id; close: sai
+    # do quadro sem contar como ganho nem perda.
+    origin_mode: str = Field(default="keep", pattern="^(keep|stage|close)$")
+    origin_stage_id: int | None = Field(default=None, gt=0)
+    origin_lost_reason: str | None = Field(default=None, min_length=1, max_length=500)
+    copy_value: bool = True
+
+
+class Transfer(TransferTarget):
+    version: int = Field(gt=0)
+
+
+class StageTransfer(TransferTarget):
+    idle_days: int | None = Field(default=None, ge=0, le=365)
+    card_ids: list[Annotated[int, Field(gt=0)]] | None = Field(
+        default=None, max_length=TRANSFER_LIMIT
+    )
 
 
 BRAZIL = ZoneInfo("America/Sao_Paulo")
@@ -576,8 +600,8 @@ async def archive_stage(stage_id: int, body: Archive, user=AUTH):
         cards = await conn.fetch(
             (
                 """
-        SELECT * FROM kb_visible_cards WHERE account_id=$1 AND stage_id=$2 ORDER BY
-        contact_id
+        SELECT * FROM kb_visible_cards WHERE account_id=$1 AND stage_id=$2 AND
+        transferred_at IS NULL ORDER BY contact_id
         """
             ),
             account,
@@ -789,6 +813,8 @@ async def move_card(conn, card_id, body, user):
     )
     if card["version"] != body.version:
         raise HTTPException(409, "Cartão alterado por outra pessoa. Atualize o quadro.")
+    if card["transferred_at"]:
+        raise HTTPException(409, "Negociação transferida para outro funil")
     require(
         await conn.fetchval(
             (
@@ -891,6 +917,224 @@ async def move_card(conn, card_id, body, user):
         card["funnel_id"],
         body.stage_id,
     )
+
+
+async def transfer_plan(conn, account: int, origin_funnel: int, body) -> dict:
+    """Trava os dois funis e valida uma única vez o destino e o modo da origem.
+
+    Os funis são travados em ordem de id: transferências opostas simultâneas não
+    entram em deadlock.
+    """
+    if body.funnel_id == origin_funnel:
+        raise HTTPException(422, "Escolha um funil diferente do atual")
+    funnels = await conn.fetch(
+        """SELECT id FROM kb_funnels WHERE account_id=$1 AND id=ANY($2::bigint[])
+        AND NOT archived ORDER BY id FOR UPDATE""",
+        account,
+        [origin_funnel, body.funnel_id],
+    )
+    if len(funnels) != 2:
+        raise HTTPException(404, "Registro não encontrado nesta conta")
+    stage_query = """SELECT id FROM kb_stages WHERE account_id=$1 AND funnel_id=$2
+        AND id=$3 AND NOT archived"""
+    require(await conn.fetchval(stage_query, account, body.funnel_id, body.stage_id))
+    if (body.origin_mode == "stage") != (body.origin_stage_id is not None):
+        raise HTTPException(
+            422, "Informe a etapa de origem somente ao mover a origem de etapa"
+        )
+    origin_reason = None
+    if body.origin_mode == "stage":
+        require(
+            await conn.fetchval(
+                stage_query, account, origin_funnel, body.origin_stage_id
+            )
+        )
+        origin_reason = await validate_loss(
+            conn, account, body.origin_stage_id, body.origin_lost_reason
+        )
+    return {
+        "origin_funnel": origin_funnel,
+        "lost_reason": await validate_loss(
+            conn, account, body.stage_id, body.lost_reason
+        ),
+        "origin_lost_reason": origin_reason,
+    }
+
+
+async def transfer_card(conn, user, card_id: int, body, plan, version=None) -> dict:
+    """Cria no funil de destino uma negociação ligada à origem.
+
+    Trocar o funil do próprio cartão tiraria o histórico dele das métricas e da
+    linha do tempo do funil de origem; por isso o destino é sempre um cartão novo.
+    Exige a transação aberta e o ``transfer_plan`` do mesmo funil de origem.
+    """
+    account = user["account"]
+    query = "SELECT * FROM kb_visible_cards WHERE account_id=$1 AND id=$2"
+    card = require(await conn.fetchrow(query, account, card_id))
+    await lock_contact(conn, account, card["contact_id"])
+    card = require(await conn.fetchrow(query, account, card_id))
+    if version is not None and card["version"] != version:
+        raise HTTPException(409, "Cartão alterado por outra pessoa. Atualize o quadro.")
+    if card["funnel_id"] != plan["origin_funnel"]:
+        raise HTTPException(409, "O cartão não está no funil de origem")
+    if card["transferred_at"]:
+        raise HTTPException(409, "Negociação já transferida")
+    if await conn.fetchval(
+        """SELECT c.id FROM kb_cards c JOIN kb_stages s ON
+        (s.account_id,s.id)=(c.account_id,c.stage_id) WHERE c.account_id=$1
+        AND c.origin_card_id=$2 AND c.funnel_id=$3 AND c.transferred_at IS NULL
+        AND s.kind='open' AND NOT EXISTS (SELECT 1 FROM kb_card_deletions d
+        WHERE (d.account_id,d.card_id)=(c.account_id,c.id))""",
+        account,
+        card_id,
+        body.funnel_id,
+    ):
+        raise HTTPException(409, "Esta negociação já está aberta no funil de destino")
+    created = await conn.fetchval(
+        """INSERT INTO kb_cards(account_id,contact_id,funnel_id,stage_id,
+        lost_reason,value_cents,created_by,conversation_id,conversation_inbox_id,
+        conversation_pinned,origin_card_id,position)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,coalesce((SELECT max(position)
+        FROM kb_cards WHERE account_id=$1 AND stage_id=$4),0)+1024) RETURNING id""",
+        account,
+        card["contact_id"],
+        body.funnel_id,
+        body.stage_id,
+        plan["lost_reason"],
+        card["value_cents"] if body.copy_value else 0,
+        user["id"],
+        card["conversation_id"],
+        card["conversation_inbox_id"],
+        card["conversation_pinned"],
+        card_id,
+    )
+    stage = card["stage_id"]
+    if body.origin_mode == "stage" and body.origin_stage_id != stage:
+        stage = body.origin_stage_id
+        origin_version = await conn.fetchval(
+            """UPDATE kb_cards SET stage_id=$3,lost_reason=$4,version=version+1,
+            position=coalesce((SELECT max(position) FROM kb_cards WHERE
+            account_id=$1 AND stage_id=$3),0)+1024 WHERE account_id=$1 AND id=$2
+            RETURNING version""",
+            account,
+            card_id,
+            stage,
+            plan["origin_lost_reason"],
+        )
+    else:
+        # A versão sobe também no keep: outra aba com o cartão aberto recebe 409.
+        origin_version = await conn.fetchval(
+            """UPDATE kb_cards SET version=version+1,transferred_at=CASE WHEN $3
+            THEN now() END WHERE account_id=$1 AND id=$2 RETURNING version""",
+            account,
+            card_id,
+            body.origin_mode == "close",
+        )
+    await conn.execute(
+        "UPDATE kb_contacts SET last_card_id=$3 WHERE account_id=$1 AND contact_id=$2",
+        account,
+        card["contact_id"],
+        created,
+    )
+    link = {
+        "origin_card_id": card_id,
+        "destination_card_id": created,
+        "origin_mode": body.origin_mode,
+    }
+    # Um registro por lado: o histórico visível filtra pelo funil e pelo cartão.
+    await record(
+        conn,
+        account,
+        card["contact_id"],
+        user,
+        "cartao_transferido",
+        {"stage_id": card["stage_id"], "value_cents": card["value_cents"]},
+        {**link, "card_id": card_id, "stage_id": stage, "funnel_id": body.funnel_id},
+        card["funnel_id"],
+        stage,
+        sync=False,
+    )
+    await record(
+        conn,
+        account,
+        card["contact_id"],
+        user,
+        "cartao_transferido",
+        {"funnel_id": card["funnel_id"], "stage_id": card["stage_id"]},
+        {**link, "card_id": created, "stage_id": body.stage_id},
+        body.funnel_id,
+        body.stage_id,
+    )
+    return {"id": created, "origin_card_id": card_id, "origin_version": origin_version}
+
+
+@router.post("/cards/{card_id}/transfer")
+async def transfer(card_id: int, body: Transfer, user=AUTH):
+    """Transfere uma negociação para outro funil."""
+    async with connection(user) as conn:
+        card = require(
+            await conn.fetchrow(
+                "SELECT funnel_id FROM kb_visible_cards WHERE account_id=$1 AND id=$2",
+                user["account"],
+                card_id,
+            )
+        )
+        plan = await transfer_plan(conn, user["account"], card["funnel_id"], body)
+        return await transfer_card(conn, user, card_id, body, plan, body.version)
+
+
+@router.post("/stages/{stage_id}/transfer")
+async def transfer_stage(stage_id: int, body: StageTransfer, user=AUTH):
+    """Transfere em lote as negociações de uma etapa.
+
+    Cada cartão roda num savepoint: um conflito não desfaz os demais. Origens que
+    ficam na etapa (``keep``) e já têm destino aberto não são selecionadas de novo,
+    então a interface pode repetir a chamada até ``remaining`` zerar.
+    """
+    account = user["account"]
+    async with connection(user) as conn:
+        funnel = require(
+            await conn.fetchval(
+                "SELECT funnel_id FROM kb_stages WHERE account_id=$1 AND id=$2",
+                account,
+                stage_id,
+            )
+        )
+        plan = await transfer_plan(conn, account, funnel, body)
+        rows = await conn.fetch(
+            """SELECT c.id,count(*) OVER() AS matched FROM kb_visible_cards c
+            JOIN kb_contacts ct USING(account_id,contact_id)
+            WHERE c.account_id=$1 AND c.stage_id=$2 AND c.transferred_at IS NULL
+            AND ($3::integer IS NULL OR greatest(c.stage_entered_at,
+              ct.last_activity_at) < now()-make_interval(days=>$3))
+            AND ($4::bigint[] IS NULL OR c.id=ANY($4))
+            AND NOT EXISTS (SELECT 1 FROM kb_cards d JOIN kb_stages s ON
+              (s.account_id,s.id)=(d.account_id,d.stage_id) WHERE
+              d.account_id=c.account_id AND d.origin_card_id=c.id
+              AND d.funnel_id=$5 AND d.transferred_at IS NULL AND s.kind='open'
+              AND NOT EXISTS (SELECT 1 FROM kb_card_deletions x WHERE
+              (x.account_id,x.card_id)=(d.account_id,d.id)))
+            ORDER BY c.position,c.id LIMIT $6""",
+            account,
+            stage_id,
+            body.idle_days,
+            body.card_ids,
+            body.funnel_id,
+            TRANSFER_LIMIT,
+        )
+        results = []
+        for row in rows:
+            try:
+                async with conn.transaction():
+                    done = await transfer_card(conn, user, row["id"], body, plan)
+                results.append({"card_id": row["id"], "ok": True, "id": done["id"]})
+            except HTTPException as exc:
+                results.append({"card_id": row["id"], "ok": False, "error": exc.detail})
+    return {
+        "transferred": sum(r["ok"] for r in results),
+        "remaining": rows[0]["matched"] - len(rows) if rows else 0,
+        "results": results,
+    }
 
 
 @router.get("/cards/{card_id}")
@@ -1165,7 +1409,7 @@ async def legacy_move(
             (
                 """
         SELECT id FROM kb_visible_cards WHERE account_id=$1 AND contact_id=$2 AND
-        ($3::bigint IS NULL OR funnel_id=$3)
+        ($3::bigint IS NULL OR funnel_id=$3) AND transferred_at IS NULL
         """
             ),
             user["account"],

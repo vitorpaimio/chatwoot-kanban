@@ -580,6 +580,34 @@ body.board-page .column-head {
   flex-shrink: 0;
   color: rgb(var(--slate-10));
 }
+.transfer-flag {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: rgb(var(--slate-10));
+}
+.transfer-link {
+  margin: 0;
+  font-size: 13px;
+  color: rgb(var(--slate-11));
+}
+/* Não pode aumentar a altura do cabeçalho: as colunas ficariam desalinhadas. */
+.column-head .column-transfer {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  margin: -4px -4px -4px 0;
+  flex-shrink: 0;
+  opacity: 0;
+}
+.column-head:hover .column-transfer,
+.column-head .column-transfer:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .column-head .column-transfer {
+    opacity: 1;
+  }
+}
 .task-flag.overdue {
   color: rgb(var(--ruby-11));
 }
