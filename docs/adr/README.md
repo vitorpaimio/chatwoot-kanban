@@ -68,3 +68,4 @@ quando uma decisão for substituída. O número 014 está ausente nesta cópia.
 - [ADR-047 — Valor da passagem, conversão sem perda e datas reais](047-metricas-valor-e-datas-reais.md)
 - [ADR-048 — Origem e campanha pelo anúncio de Click-to-WhatsApp](048-origem-por-anuncio.md)
 - [ADR-049 — Visão comercial nas métricas](049-visao-comercial-metricas.md)
+- [ADR-050 — Transferência de negociações entre funis](050-transferencia-entre-funis.md)

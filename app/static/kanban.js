@@ -52,6 +52,7 @@ let metadataLoaded = false,
 function icon(name) {
   const paths = {
     check: ["m5 12 4 4L19 6"],
+    transfer: ["M4 12h15", "m13 6 6 6-6 6"],
     trash: ["M3 6h18", "M9 6V3h6v3", "m5 6 1 15h12l1-15", "M10 10v7M14 10v7"],
     history: ["M3 12a9 9 0 1 0 3-6.7", "M3 3v6h6", "M12 7v5l3 2"],
     link: ["M10 13a5 5 0 0 0 7 .1l3-3a5 5 0 0 0-7-7l-2 2", "M14 11a5 5 0 0 0-7-.1l-3 3a5 5 0 0 0 7 7l2-2"],
@@ -682,12 +683,15 @@ function details(card) {
   else action("Vincular conversa", "link", () => conversationDialog(card));
   action("Histórico", "history", () => history(card.contact_id));
   action(card.task_id ? "Editar tarefa" : "Criar tarefa", "task", () => taskDialog(card));
+  if (data.funnels.length > 1)
+    action("Transferir para outro funil", "transfer", () => transferDialog(card));
   const content = [
     el(
       "p",
       card.phone || card.email || "Contato sem telefone cadastrado",
       "muted",
     ),
+    ...transferLinks(card),
     stage,
     value,
     ...taskSummary(card),
@@ -737,6 +741,124 @@ function details(card) {
   remove.append(icon("trash"));
   $("dialog-close").before(remove);
 }
+// Vínculo entre a negociação de origem e a criada no outro funil.
+function transferLinks(card) {
+  const lines = [];
+  if (card.origin_funnel)
+    lines.push(`Veio de ${card.origin_funnel} / ${card.origin_stage}`);
+  if (card.transfer_funnel)
+    lines.push(`Transferida para ${card.transfer_funnel} / ${card.transfer_stage}`);
+  return lines.map((text) => el("p", text, "transfer-link"));
+}
+const ORIGIN_MODES = [
+  ["keep", "Manter na etapa atual", "Útil para follow-up: a negociação segue aqui."],
+  ["stage", "Mover para outra etapa deste funil", "Por exemplo, marcar como ganha ao passar para o pós-venda."],
+  ["close", "Encerrar neste funil", "Sai do quadro sem contar como ganho nem perda."],
+];
+// Transferir cria uma negociação no funil de destino ligada à origem. Com uma
+// etapa (e sem cartão), transfere em lote os cartões daquela coluna.
+function transferDialog(card, column) {
+  const source = card ? card.funnel_id : column.funnel_id;
+  const targets = data.funnels.filter((f) => f.id !== source);
+  if (!targets.length) return notice("Crie outro funil para transferir negociações.");
+  const [funnelLabel, funnel] = selectField(
+    "Funil de destino",
+    targets.map((f) => [f.id, f.name]),
+    targets[0].id,
+  );
+  const target = el("div");
+  let targetStage;
+  const drawTarget = () => {
+    const stages = data.stages.filter((s) => s.funnel_id === Number(funnel.value));
+    const [node, state] = stageField(stages, stages[0]?.id);
+    targetStage = state;
+    target.replaceChildren(node);
+  };
+  funnel.onchange = drawTarget;
+  drawTarget();
+  const origin = el("fieldset", null, "automation");
+  origin.append(el("legend", card ? "Esta negociação" : "Negociações desta etapa"));
+  const originStages = data.stages.filter((s) => s.funnel_id === source);
+  const [originNode, originStage] = stageField(
+    originStages,
+    (originStages.find((s) => s.kind === "won") || originStages[0]).id,
+  );
+  let mode = "keep";
+  for (const [value, label, hint] of ORIGIN_MODES) {
+    const row = el("label", null, "check-row");
+    const input = el("input");
+    input.type = "radio";
+    input.name = "origin-mode";
+    input.value = value;
+    input.checked = value === mode;
+    input.onchange = () => {
+      mode = value;
+      originNode.hidden = mode !== "stage";
+    };
+    const text = el("span", label);
+    text.title = hint;
+    row.append(input, text);
+    origin.append(row);
+  }
+  originNode.hidden = true;
+  origin.append(originNode, el("p", "Encerrar não conta como perda: use Mover para registrar ganho ou perda.", "field-hint"));
+  const copyRow = el("label", null, "check-row");
+  const copy = el("input");
+  copy.type = "checkbox";
+  copy.checked = true;
+  copyRow.append(copy, el("span", "Levar o valor da negociação"));
+  const content = [funnelLabel, target, origin, copyRow];
+  let idle;
+  if (!card) {
+    const [idleLabel, input] = field("Só as sem atividade há mais de (dias)", "number", "");
+    input.min = 0;
+    input.max = 365;
+    input.placeholder = "Todas da etapa";
+    idle = input;
+    content.splice(
+      0,
+      0,
+      el("p", `Etapa ${column.name}: cada negociação ganha um cartão no funil escolhido.`, "muted"),
+    );
+    content.push(idleLabel, el("p", "Conta a última mensagem do contato e a entrada na etapa.", "field-hint"));
+  }
+  let summary;
+  dialog(card ? `Transferir · ${card.name}` : "Transferir negociações", content, async () => {
+    const body = {
+      funnel_id: Number(funnel.value),
+      stage_id: Number(targetStage.value),
+      origin_mode: mode,
+      copy_value: copy.checked,
+    };
+    const kind = (id) => data.stages.find((s) => s.id === id)?.kind;
+    if (kind(body.stage_id) === "lost") body.lost_reason = await lossReason();
+    if (mode === "stage") {
+      body.origin_stage_id = Number(originStage.value);
+      if (kind(body.origin_stage_id) === "lost")
+        body.origin_lost_reason = await lossReason();
+    }
+    if (card) {
+      await api(`/cards/${card.id}/transfer`, "POST", { ...body, version: card.version });
+      summary = "Negociação transferida.";
+      return;
+    }
+    if (idle.value !== "") body.idle_days = Number(idle.value);
+    // O servidor limita cada chamada; repete enquanto houver cartões elegíveis.
+    let transferred = 0,
+      failed = 0,
+      result;
+    do {
+      result = await api(`/stages/${column.id}/transfer`, "POST", body);
+      transferred += result.transferred;
+      failed += result.results.length - result.transferred;
+    } while (result.remaining > 0 && result.transferred > 0);
+    summary =
+      `${transferred} ${transferred === 1 ? "negociação transferida" : "negociações transferidas"}` +
+      (failed ? `; ${failed} não puderam ser transferidas (alteradas ou já no destino).` : ".");
+  }, () => notice(summary));
+  $("dialog-save").textContent = "Transferir";
+  $("dialog").classList.add("stage-dialog");
+}
 const DUE_LABEL = { overdue: "Vencida", today: "Vence hoje", active: "Agendada" };
 const syncLabel = (status) =>
   ({
@@ -775,6 +897,11 @@ function render() {
         "column-total",
       ),
     );
+    if (!compact && total.count && data.funnels.length > 1)
+      head.append(
+        iconButton("transfer", `Transferir negociações de ${stage.name}`, () =>
+          transferDialog(null, stage), "column-transfer"),
+      );
     column.append(head);
     for (const card of rows) {
       const item = el("article", null, "card");
@@ -879,6 +1006,13 @@ function render() {
             `Na etapa ${relativeTime(card.stage_entered_at)} (desde ${new Date(card.stage_entered_at).toLocaleString("pt-BR")})`,
         ].filter(Boolean).join(" · ");
         bottom.append(time);
+      }
+      if (card.transfer_funnel) {
+        const flag = el("span", null, "transfer-flag");
+        flag.title = `Transferida para ${card.transfer_funnel} / ${card.transfer_stage}`;
+        flag.setAttribute("aria-label", flag.title);
+        flag.append(icon("transfer"));
+        bottom.append(flag);
       }
       if (card.task_id) {
         const state = ["overdue", "today"].includes(card.due_state) ? card.due_state : "active";
@@ -1791,6 +1925,7 @@ const actionNames = {
   cartao_criado: "Cartão criado",
   valor_atualizado: "Valor atualizado",
   etapa_arquivada_movimento: "Cartão transferido por arquivamento",
+  cartao_transferido: "Transferido entre funis",
 };
 async function history(contact) {
   editingCardId = null;
@@ -1810,6 +1945,7 @@ async function history(contact) {
     ["sincronizacao_falhou", "Falha de sincronização"],
     ["conflito_externo", "Conflito"],
     ["cartao_movido", "Movimentação"],
+    ["cartao_transferido", "Transferência"],
     ["tarefa_criada", "Tarefa criada"],
   ]);
   const list = el("div");

@@ -25,7 +25,7 @@ WITH visible AS (
     JOIN kb_funnels f ON (f.account_id,f.id)=(c.account_id,c.funnel_id)
     JOIN kb_stages s ON (s.account_id,s.id)=(c.account_id,c.stage_id)
     WHERE c.account_id=t.account_id AND c.contact_id=t.contact_id AND NOT f.archived
-    ORDER BY f.is_primary DESC,f.position,c.id LIMIT 1
+    ORDER BY c.transferred_at IS NOT NULL,f.is_primary DESC,f.position,c.id LIMIT 1
   ) card ON true
   LEFT JOIN kb_agents a ON (a.account_id,a.user_id)=(t.account_id,t.assigned_to)
   WHERE t.account_id=$1 AND t.status='active'

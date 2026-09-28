@@ -26,9 +26,27 @@ async def board_page(
             ct.last_activity_at,t.id AS task_id,t.message,t.due_date,
             t.version AS task_version,t.due_state,t.assigned_to AS task_assigned_to,
             a.name AS task_assignee_name,
-            coalesce(s.status,'synced') AS sync_status,s.last_error
+            coalesce(s.status,'synced') AS sync_status,s.last_error,
+            og.origin_funnel,og.origin_stage,tr.transfer_card_id,tr.transfer_funnel,
+            tr.transfer_stage
           FROM kb_visible_cards c JOIN kb_contacts ct USING(account_id,contact_id)
           JOIN kb_funnels f ON (f.account_id,f.id)=(c.account_id,c.funnel_id)
+          LEFT JOIN LATERAL (
+            SELECT sf.name AS origin_funnel,ss.name AS origin_stage FROM kb_cards o
+            JOIN kb_funnels sf ON (sf.account_id,sf.id)=(o.account_id,o.funnel_id)
+            JOIN kb_stages ss ON (ss.account_id,ss.id)=(o.account_id,o.stage_id)
+            WHERE o.account_id=c.account_id AND o.id=c.origin_card_id
+          ) og ON true
+          LEFT JOIN LATERAL (
+            SELECT d.id AS transfer_card_id,df.name AS transfer_funnel,
+              ds.name AS transfer_stage FROM kb_cards d
+            JOIN kb_funnels df ON (df.account_id,df.id)=(d.account_id,d.funnel_id)
+            JOIN kb_stages ds ON (ds.account_id,ds.id)=(d.account_id,d.stage_id)
+            WHERE d.account_id=c.account_id AND d.origin_card_id=c.id
+              AND NOT df.archived AND NOT EXISTS (SELECT 1 FROM kb_card_deletions x
+              WHERE (x.account_id,x.card_id)=(d.account_id,d.id))
+            ORDER BY d.id DESC LIMIT 1
+          ) tr ON true
           LEFT JOIN kb_tasks t ON (t.account_id,t.contact_id)=
             (c.account_id,c.contact_id) AND t.status='active'
           LEFT JOIN kb_agents a ON (a.account_id,a.user_id)=
@@ -36,6 +54,8 @@ async def board_page(
           LEFT JOIN kb_sync s ON (s.account_id,s.contact_id)=
             (c.account_id,c.contact_id)
           WHERE c.account_id=$1 AND NOT f.archived
+            -- Origem encerrada por transferência só abre pelo próprio id.
+            AND (c.transferred_at IS NULL OR c.id=$11)
             AND ($11::bigint IS NULL OR c.id=$11)
             AND ($2::bigint IS NULL OR c.funnel_id=$2)
             AND ($3::bigint IS NULL OR c.stage_id=$3)
