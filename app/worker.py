@@ -22,15 +22,18 @@ from app.recovery import import_one, reconcile_one
 from app.services import (
     SYSTEM,
     apply_ad_origin,
+    confirm_missing_contact,
     create_automatic_cards,
     first_ad,
     projection,
     refresh_contact,
+    retire_missing_contact,
     setup_account,
     sync_stage_options,
 )
 
 logger = logging.getLogger("kanban.worker")
+MAX_ATTEMPTS = 10
 WORKER_ID = f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4()}"
 
 
@@ -86,6 +89,13 @@ async def process_delivery(conn, cw, row):
         if not await work_enabled(conn, cw.account):
             return
         await lock_primary_contact(conn, cw.account, row["contact_id"] or 0)
+        row = await conn.fetchrow(
+            "SELECT * FROM kb_deliveries WHERE id=$1 AND account_id=$2 FOR UPDATE",
+            row["id"],
+            cw.account,
+        )
+        if not row or row["status"] not in ("received", "failed"):
+            return
         try:
             async with conn.transaction():
                 if row["contact_id"]:
@@ -113,16 +123,68 @@ async def process_delivery(conn, cw, row):
                     row["id"],
                 )
         except Exception as exc:
+            if (
+                isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code == 404
+            ):
+                try:
+                    if row["contact_id"] and await confirm_missing_contact(
+                        cw, row["contact_id"]
+                    ):
+                        await retire_missing_contact(
+                            conn, cw.account, row["contact_id"]
+                        )
+                        return
+                    payload = row["payload"] or {}
+                    if row["event_type"].startswith("conversation_") and isinstance(
+                        payload.get("id"), int
+                    ):
+                        try:
+                            await cw.request("GET", f"/conversations/{payload['id']}")
+                        except httpx.HTTPStatusError as missing:
+                            if missing.response.status_code != 404:
+                                raise
+                            await cw.request("GET", "/contacts", params={"page": 1})
+                            await conn.execute(
+                                "UPDATE kb_deliveries SET status='gone',"
+                                "processed_at=now(),"
+                                "error='Conversa removida no Chatwoot' WHERE id=$1",
+                                row["id"],
+                            )
+                            await record(
+                                conn,
+                                cw.account,
+                                row["contact_id"],
+                                SYSTEM,
+                                "entrega_descartada",
+                                after={"delivery_id": row["id"]},
+                                sync=False,
+                            )
+                            return
+                except Exception as confirmation_error:
+                    exc = confirmation_error
             diagnostic, delay = failure(exc, row["attempts"])
+            terminal = row["attempts"] + 1 >= MAX_ATTEMPTS
             deferred = (exc, delay)
             await conn.execute(
                 """UPDATE kb_deliveries SET
-                   status='failed',attempts=attempts+1,error=$2,
+                   status=$4,attempts=attempts+1,error=$2,
                 next_attempt=now()+$3*interval '1 second' WHERE id=$1""",
                 row["id"],
                 diagnostic,
                 delay,
+                "dead" if terminal else "failed",
             )
+            if terminal:
+                await record(
+                    conn,
+                    cw.account,
+                    row["contact_id"],
+                    SYSTEM,
+                    "entrega_esgotada",
+                    after={"delivery_id": row["id"], "error": diagnostic},
+                    sync=False,
+                )
 
     if deferred:
         await defer_remote(conn, cw.account, *deferred)
@@ -142,7 +204,7 @@ async def process_sync(conn, cw, job):
             account,
             contact,
         )
-        if job["status"] == "synced":
+        if not job or job["status"] not in ("pending", "failed"):
             return
         try:
             attributes = await projection(conn, account, contact)
@@ -168,24 +230,36 @@ async def process_sync(conn, cw, job):
                 sync=False,
             )
         except Exception as exc:
+            if (
+                isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code == 404
+            ):
+                try:
+                    if await confirm_missing_contact(cw, contact):
+                        await retire_missing_contact(conn, account, contact)
+                        return
+                except Exception as confirmation_error:
+                    exc = confirmation_error
             diagnostic, delay = failure(exc, job["attempts"])
+            terminal = job["attempts"] + 1 >= MAX_ATTEMPTS
             deferred = (exc, delay)
             await conn.execute(
                 """UPDATE kb_sync SET
-                   status='failed',attempts=attempts+1,last_error=$3,
+                   status=$5,attempts=attempts+1,last_error=$3,
                 next_attempt=now()+$4*interval '1 second' WHERE account_id=$1 AND
                 contact_id=$2""",
                 account,
                 contact,
                 diagnostic,
                 delay,
+                "dead" if terminal else "failed",
             )
             await record(
                 conn,
                 account,
                 contact,
                 SYSTEM,
-                "sincronizacao_falhou",
+                "sincronizacao_esgotada" if terminal else "sincronizacao_falhou",
                 after={"attempt": job["attempts"] + 1, "error": diagnostic},
                 sync=False,
             )
@@ -324,7 +398,7 @@ async def tick():
                     limit = row["processing_limit"]
                     deliveries = await conn.fetch(
                         """SELECT * FROM kb_deliveries WHERE account_id=$1 AND
-                           status<>'processed'
+                           status IN ('received','failed')
                         AND next_attempt<=now() ORDER BY id LIMIT $2""",
                         account,
                         limit,
@@ -337,7 +411,7 @@ async def tick():
                     await recovery_batch(conn, cw, "reconcile", limit)
                     jobs = await conn.fetch(
                         """SELECT * FROM kb_sync WHERE account_id=$1 AND
-                           status<>'synced'
+                           status IN ('pending','failed')
                         AND next_attempt<=now() ORDER BY next_attempt,contact_id
                         LIMIT $2""",
                         account,

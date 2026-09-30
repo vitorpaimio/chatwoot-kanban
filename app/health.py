@@ -17,16 +17,18 @@ async def health_status() -> dict:
             queue = await conn.fetchrow(
                 """SELECT count(*) AS pending,count(*) FILTER(WHERE stale) AS
                    delayed FROM (
-                SELECT s.status='failed' OR s.next_attempt<now()-interval '10
+                SELECT s.status IN ('failed','dead') OR
+                s.next_attempt<now()-interval '10
                 minutes' AS stale FROM
                 kb_sync s
                 JOIN kb_accounts a USING(account_id) WHERE a.enabled AND
-                s.status<>'synced'
-                UNION ALL SELECT d.status='failed' OR d.next_attempt<now()-interval
+                s.status NOT IN ('synced','gone')
+                UNION ALL SELECT d.status IN ('failed','dead') OR
+                d.next_attempt<now()-interval
                 '10 minutes' FROM
                 kb_deliveries d
                 JOIN kb_accounts a USING(account_id) WHERE a.enabled AND
-                d.status<>'processed'
+                d.status NOT IN ('processed','gone')
                 UNION ALL SELECT a.activation_error IS NOT NULL FROM kb_accounts a
                 WHERE a.enabled AND a.activation_status<>'ready'
                 UNION ALL SELECT a.import_error IS NOT NULL FROM kb_accounts a

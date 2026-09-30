@@ -2,6 +2,10 @@ import re
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
+import httpx
+from asyncpg import Connection
+
+from app.chatwoot_client import Chatwoot
 from app.database import notify, record, require_enabled
 from app.provisioning.attributes import provision_attributes, remember_resource
 
@@ -589,3 +593,63 @@ async def remove_conversation_app(conn, cw):
     await conn.execute(
         "UPDATE kb_accounts SET app_id=NULL WHERE account_id=$1", cw.account
     )
+
+
+async def confirm_missing_contact(cw: Chatwoot, contact: int) -> bool:
+    """Confirma ausência do contato com credencial ainda válida para a conta."""
+    try:
+        await cw.request("GET", f"/contacts/{contact}")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 404:
+            raise
+        # Um 404 da conta/rota não prova que o contato foi apagado.
+        await cw.request("GET", "/contacts", params={"page": 1})
+        return True
+    return False
+
+
+async def retire_missing_contact(conn: Connection, account: int, contact: int) -> None:
+    """Encerra estado ativo sob bloqueio do contato e transação do chamador."""
+    async with conn.transaction():
+        cards = await conn.fetch(
+            """INSERT INTO kb_card_deletions(account_id,card_id)
+            SELECT account_id,id FROM kb_cards WHERE account_id=$1 AND contact_id=$2
+            ON CONFLICT DO NOTHING RETURNING card_id""",
+            account,
+            contact,
+        )
+        tasks = await conn.fetch(
+            """UPDATE kb_tasks SET status='closed',closed_at=now(),closed_by=NULL,
+            version=version+1 WHERE account_id=$1 AND contact_id=$2 AND status='active'
+            RETURNING id""",
+            account,
+            contact,
+        )
+        jobs = await conn.fetch(
+            """UPDATE kb_sync SET status='gone',
+            last_error='Contato removido no Chatwoot',
+            updated_at=now() WHERE account_id=$1 AND contact_id=$2 AND status<>'gone'
+            RETURNING contact_id""",
+            account,
+            contact,
+        )
+        deliveries = await conn.fetch(
+            """UPDATE kb_deliveries SET status='gone',processed_at=now(),
+            error='Contato removido no Chatwoot' WHERE account_id=$1 AND contact_id=$2
+            AND status IN ('received','failed') RETURNING id""",
+            account,
+            contact,
+        )
+        if cards or tasks or jobs or deliveries:
+            await record(
+                conn,
+                account,
+                contact,
+                SYSTEM,
+                "contato_removido",
+                after={
+                    "cards": [r["card_id"] for r in cards],
+                    "tasks": [r["id"] for r in tasks],
+                },
+                sync=False,
+            )

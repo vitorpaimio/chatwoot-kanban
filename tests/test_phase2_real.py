@@ -11,13 +11,14 @@ import pytest
 from app.database import connection, lock_contact
 from app.recovery import import_one, reconcile_one
 from app.security import encrypt
-from app.services import projection, setup_account
+from app.services import projection, refresh_contact, setup_account
 
 
 @pytest.mark.skipif(
     not os.environ.get("PHASE2_CHATWOOT_DIR"), reason="Exige checkout Rails CE de teste"
 )
-async def test_phase2_real_rails(db):
+@pytest.mark.parametrize("removal", ["delete", "identify"])
+async def test_phase2_real_rails(db, removal):
     root = Path(__file__).resolve().parents[1]
     env = dict(os.environ)
     env.update(
@@ -135,6 +136,63 @@ async def test_phase2_real_rails(db):
             )
             assert updated["custom_attributes"]["alheio"] == "preservar"
             assert updated["custom_attributes"]["origem"] == "Feira"
+            command = "identify_contact" if removal == "identify" else "remove_contact"
+            process.stdin.write((json.dumps({command: True}) + "\n").encode())
+            await process.stdin.drain()
+            removed = await receive()
+            assert removed["status"] == 200
+            if removal == "identify":
+                canonical = removed["body"]["contact_id"]
+                assert canonical != contact
+                async with conn.transaction():
+                    await lock_contact(conn, account, canonical)
+                    await refresh_contact(conn, cw, canonical, apply_remote=True)
+                # O atributo copiado na união cria o card do contato definitivo,
+                # enquanto o card do visitante ainda existe no Kanban.
+                assert (
+                    await conn.fetchval(
+                        "SELECT count(*) FROM kb_cards WHERE account_id=$1", account
+                    )
+                    == 2
+                )
+            await conn.execute(
+                "UPDATE kb_sync SET status='pending',version=version+1 "
+                "WHERE account_id=$1",
+                account,
+            )
+            if removal == "identify":
+                await conn.execute(
+                    "UPDATE kb_accounts SET reconcile_cursor=0 WHERE account_id=$1",
+                    account,
+                )
+                assert await reconcile_one(conn, cw)
+            else:
+                await process_sync(conn, cw, job)
+            assert (
+                await conn.fetchval(
+                    "SELECT status FROM kb_sync WHERE account_id=$1 AND contact_id=$2",
+                    account,
+                    contact,
+                )
+                == "gone"
+            )
+            if removal == "identify":
+                assert (
+                    await conn.fetchval(
+                        """SELECT count(*) FROM kb_cards c WHERE account_id=$1
+                    AND NOT EXISTS (SELECT 1 FROM kb_card_deletions d
+                    WHERE d.account_id=c.account_id AND d.card_id=c.id)""",
+                        account,
+                    )
+                    == 1
+                )
+            assert (
+                await conn.fetchval(
+                    "SELECT count(*) FROM kb_card_deletions WHERE account_id=$1",
+                    account,
+                )
+                == 1
+            )
     finally:
         if process.returncode is None:
             process.stdin.write(b'{"stop":true}\n')

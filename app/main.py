@@ -108,6 +108,12 @@ async def loader():
     return FileResponse(ROOT / "static" / "loader.js", media_type="text/javascript")
 
 
+@app.get("/health/live")
+async def liveness() -> dict[str, str]:
+    """Confirma que a API responde, independentemente das filas e do worker."""
+    return {"status": "ok"}
+
+
 @app.get("/health")
 async def health():
     result = await health_status()
