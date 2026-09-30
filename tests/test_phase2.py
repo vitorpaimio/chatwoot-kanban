@@ -266,7 +266,7 @@ async def test_reconciliation_repairs_lost_webhook_without_remote_authority(
         )
 
 
-async def test_reconcile_404_preserves_local_state_and_advances(db):
+async def test_reconcile_404_retires_card_preserves_history_and_advances(db):
     remote = Remote()
     remote.contacts.clear()
     async with connection() as conn:
@@ -279,6 +279,12 @@ async def test_reconcile_404_preserves_local_state_and_advances(db):
         )
         assert (
             await conn.fetchval("SELECT count(*) FROM kb_cards WHERE account_id=1") == 1
+        )
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM kb_card_deletions WHERE account_id=1"
+            )
+            == 1
         )
 
 

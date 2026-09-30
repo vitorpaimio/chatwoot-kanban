@@ -1615,7 +1615,7 @@ async def retry(user=AUTH):
             (
                 """
         UPDATE kb_sync SET status= 'pending' ,next_attempt=now(),attempts=0
-        WHERE account_id=$1 AND status<> 'synced'
+        WHERE account_id=$1 AND status IN ('failed','dead','pending')
         """
             ),
             user["account"],
@@ -1623,8 +1623,8 @@ async def retry(user=AUTH):
         await conn.execute(
             (
                 """
-        UPDATE kb_deliveries SET next_attempt=now() WHERE account_id=$1 AND
-        status= 'failed'
+        UPDATE kb_deliveries SET next_attempt=now(),status='received',attempts=0
+        WHERE account_id=$1 AND status IN ('failed','dead')
         """
             ),
             user["account"],

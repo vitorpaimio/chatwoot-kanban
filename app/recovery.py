@@ -5,7 +5,12 @@ from asyncpg import Connection
 
 from app.chatwoot_client import Chatwoot
 from app.database import lock_primary_contact, record, require_enabled
-from app.services import SYSTEM, refresh_contact
+from app.services import (
+    SYSTEM,
+    confirm_missing_contact,
+    refresh_contact,
+    retire_missing_contact,
+)
 
 
 async def import_one(conn: Connection, cw: Chatwoot) -> bool:
@@ -163,15 +168,9 @@ async def reconcile_one(conn: Connection, cw: Chatwoot) -> bool:
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code != 404:
                     raise
-                # Ausência remota não autoriza apagar o estado local.
-                await record(
-                    conn,
-                    cw.account,
-                    contact,
-                    SYSTEM,
-                    "contato_remoto_ausente",
-                    sync=False,
-                )
+                if not await confirm_missing_contact(cw, contact):
+                    raise
+                await retire_missing_contact(conn, cw.account, contact)
     if contact is None:
         await conn.execute(
             "UPDATE kb_accounts SET reconcile_cursor=0,"

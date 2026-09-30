@@ -25,6 +25,18 @@ ActiveRecord::Base.transaction do
   while (line = $stdin.gets)
     command = JSON.parse(line)
     break if command['stop']
+    if command['identify_contact']
+      identified = Contact.create!(account: account, name: 'Contato identificado', email: 'identificado@example.test')
+      result = ContactIdentifyAction.new(contact: contact.reload,
+        params: { email: identified.email }, retain_original_contact_name: true).perform
+      puts JSON.generate(status: 200, body: { contact_id: result.id })
+      next
+    end
+    if command['remove_contact']
+      contact.destroy!
+      puts JSON.generate(status: 200, body: {})
+      next
+    end
     params = command['json'] || command['params'] || {}
     session.public_send(command.fetch('method').downcase,
       "/api/v1/accounts/#{account.id}#{command.fetch('path')}",
