@@ -213,6 +213,8 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
     if not url:
         raise InspectionError("FRONTEND_URL ausente no Chatwoot.")
     chatwoot_url = f"http://{internal_host}:3000"
+    if adapter == "swarm" and args.external_url:
+        raise InspectionError("--external-url existe somente no adaptador Compose.")
     if adapter == "swarm" and inventory.get("force_ssl"):
         if urlsplit(url).scheme != "https":
             raise InspectionError(
@@ -270,6 +272,7 @@ def discover(args: argparse.Namespace, image: str) -> Deployment:
         accounts=accounts,
         image=image,
         public_url=url,
+        external_url=args.external_url if adapter == "compose" else None,
         chatwoot_url=chatwoot_url,
         chatwoot_service=service_name(rails, adapter),
         chatwoot_database_service=service_name(postgres, adapter),
@@ -315,13 +318,17 @@ def parser() -> argparse.ArgumentParser:
     )
     result.add_argument("--public-url", help="Origem HTTP do gateway Compose")
     result.add_argument("--listen-host")
+    result.add_argument(
+        "--external-url",
+        help="Origem do proxy existente na frente do gateway Compose (HTTPS)",
+    )
     return result
 
 
 def summary(config: Deployment, args: argparse.Namespace) -> None:
     """Mostra apenas o destino e as contas que receberão a integração."""
     names = getattr(args, "account_names", {})
-    print(f"\n  Chatwoot: {terminal.clean(config.public_url)}")
+    print(f"\n  Chatwoot: {terminal.clean(config.origin)}")
     print(f"  Contas selecionadas: {len(config.accounts)}")
     for account in config.accounts:
         print(f"    • {terminal.clean(names.get(account, f'Conta #{account}'))}")
@@ -384,8 +391,15 @@ def run(args: argparse.Namespace, root: Path = ROOT) -> int:
                     "Esta instalação já tem contas salvas. A seleção de contas é feita "
                     "na primeira instalação; nenhuma conta foi alterada."
                 )
+            if args.external_url and args.operation != "update":
+                raise InspectionError(
+                    "Use update para alterar --external-url de uma instalação."
+                )
             if args.operation == "update":
-                config = config.model_copy(update={"image": image})
+                changes: dict = {"image": image}
+                if args.external_url:
+                    changes["external_url"] = args.external_url
+                config = Deployment.model_validate(config.model_dump() | changes)
         elif args.operation != "install":
             raise InspectionError(
                 "Instalação não encontrada. Execute install primeiro."
@@ -428,7 +442,7 @@ def run(args: argparse.Namespace, root: Path = ROOT) -> int:
                 terminal.select(
                     f"Continuar com {len(config.accounts)} conta(s) selecionada(s)?",
                     ["Cancelar", action],
-                    context=config.public_url,
+                    context=config.origin,
                 )[0]
                 == 0
             ):
@@ -453,9 +467,7 @@ def run(args: argparse.Namespace, root: Path = ROOT) -> int:
             print("✓ Integração removida. Dados e backups preservados.")
         else:
             print(f"\n✓ Kanban pronto em {len(config.accounts)} conta(s)!")
-            print(
-                f"Abra {terminal.clean(config.public_url)} e acesse Pipeline → Kanban."
-            )
+            print(f"Abra {terminal.clean(config.origin)} e acesse Pipeline → Kanban.")
         return 0
     except (Exception, KeyboardInterrupt):
         if (

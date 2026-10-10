@@ -33,6 +33,8 @@ def nginx(config: Deployment) -> str:
 server {
     listen 80;
     server_name _;
+    # O token da API do Chatwoot chega no cabeçalho api_access_token.
+    underscores_in_headers on;
     resolver 127.0.0.11 valid=5s ipv6=off;
     client_max_body_size 40m;
     proxy_set_header Host $http_host;

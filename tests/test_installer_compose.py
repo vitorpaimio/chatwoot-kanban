@@ -39,6 +39,8 @@ def config(**changes):
         {"tls": True},
         {"listen_host": "localhost;evil"},
         {"listen_port": 80},
+        {"external_url": "https://chat.example.com/kanban"},
+        {"external_url": "ftp://chat.example.com"},
     ],
 )
 def test_reject_unsafe_compose_contract(changes):
@@ -69,6 +71,7 @@ def test_generated_proxy_and_credentials_have_correct_boundaries(tmp_path):
     assert d["services"]["api"]["networks"]["public"]["aliases"] == ["kanban-test_api"]
     proxy = nginx(config())
     assert "proxy_buffering off" in proxy and "$http_host" in proxy
+    assert "underscores_in_headers on;" in proxy
     assert "http://rails:3000" in proxy and "http://kanban-test_api:8000" in proxy
     assert "docker.sock" not in json.dumps(d)
 
@@ -162,3 +165,28 @@ def test_uninstall_does_not_delete_unrecognized_mount_files(tmp_path, monkeypatc
         assert not (lc.mounts / "database_password").exists()
     finally:
         lc.state.close()
+
+
+def test_external_url_sets_origin_and_public_callback(tmp_path):
+    cfg = config(external_url="https://chat.example.com/")
+    rendered = document(cfg, "identity", cfg.image, tmp_path)
+    env = rendered["services"]["api"]["environment"]
+    assert cfg.callback_url == "https://chat.example.com"
+    assert env["PUBLIC_URL"] == "https://chat.example.com"
+    assert env["WEBHOOK_BASE_URL"] == "https://chat.example.com"
+    assert rendered["services"]["nginx"]["ports"] == ["127.0.0.1:18080:80"]
+
+
+def test_external_url_can_be_added_by_update(tmp_path, monkeypatch):
+    lc = ComposeLifecycle(config(external_url="https://chat.example.com"), tmp_path)
+    lc.state.data = {"config": config().model_dump(), "identity": "previous"}
+    monkeypatch.setattr(lc, "check_environment", lambda: None)
+    monkeypatch.setattr(lc, "check_services", lambda _identity: None)
+    monkeypatch.setattr(lc.runtime, "run", lambda *_args: b"")
+    monkeypatch.setattr(
+        lc.runtime, "rails", lambda _request: {"accounts": {}, "receipt": None}
+    )
+    assert lc.preflight() == {"plans": {}, "receipt": None}
+    lc.config = config(external_url="https://chat.example.com", accounts=[2])
+    with pytest.raises(InspectionError, match="imutável"):
+        lc.preflight()

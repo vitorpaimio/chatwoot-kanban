@@ -66,3 +66,4 @@ Formato: `<número>-<data>-<assunto>.md`.
 - [Sessão 046 — Visão comercial nas métricas](046-2026-09-25-visao-comercial.md)
 - [Sessão 047 — Transferência entre funis](047-2026-09-28-transferencia-entre-funis.md)
 - [Sessão 048 — Contato removido e disponibilidade](048-2026-09-30-contato-removido.md)
+- [Sessão 049 — Instalador Compose atrás de proxy](049-2026-10-09-instalador-compose-proxy.md)

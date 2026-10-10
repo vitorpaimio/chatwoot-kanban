@@ -180,6 +180,57 @@ def test_compose_keeps_internal_url_even_with_force_ssl(monkeypatch):
     assert config.chatwoot_url == "http://rails:3000"
 
 
+def test_compose_external_url_is_saved_and_rejected_in_swarm(monkeypatch):
+    docker, _, _ = fixture("compose")
+    monkeypatch.setattr(q, "docker", docker)
+    args = ["--yes", "--public-url", "http://localhost:18080"]
+    args += ["--external-url", "https://chat.example.com"]
+    config = q.discover(q.parser().parse_args(args), IMAGE)
+    assert config.origin == "https://chat.example.com"
+    assert config.callback_url == "https://chat.example.com"
+    assert config.tls is False
+    docker, _, _ = fixture()
+    monkeypatch.setattr(q, "docker", docker)
+    with pytest.raises(InspectionError, match="Compose"):
+        q.discover(
+            q.parser().parse_args(["--yes", "--external-url", "https://x.example"]),
+            IMAGE,
+        )
+
+
+def test_update_adds_external_url_and_later_update_keeps_it(monkeypatch, tmp_path):
+    docker, _, _ = fixture("compose")
+    monkeypatch.setattr(q, "docker", docker)
+    args = ["--yes", "--public-url", "http://localhost:18080"]
+    config = q.discover(q.parser().parse_args(args), IMAGE)
+    (tmp_path / "installation.json").write_text(config.model_dump_json())
+    monkeypatch.setenv("KANBAN_RUNTIME_IMAGE", IMAGE)
+    monkeypatch.setattr(q, "docker", lambda *_args: None)
+    seen = []
+
+    class Fake:
+        def __init__(self, config, path):
+            self.state = State(path)
+            seen.append(config.external_url)
+
+        def plan(self, *_args):
+            return {"blocked": False}
+
+        def install(self, *_args):
+            return {"healthy": True}
+
+    monkeypatch.setattr(q, "ComposeLifecycle", Fake)
+    with pytest.raises(InspectionError, match="update"):
+        q.run(
+            q.parser().parse_args(["--yes", "--external-url", "https://c.example"]),
+            tmp_path,
+        )
+    update = ["update", "--yes", "--external-url", "https://c.example"]
+    assert q.run(q.parser().parse_args(update), tmp_path) == 0
+    assert q.run(q.parser().parse_args(["update", "--yes"]), tmp_path) == 0
+    assert seen == ["https://c.example", "https://c.example"]
+
+
 def test_multiple_accounts_need_explicit_selection(monkeypatch):
     docker, _, _ = fixture(accounts=[[1, "A"], [2, "B"]])
     monkeypatch.setattr(q, "docker", docker)

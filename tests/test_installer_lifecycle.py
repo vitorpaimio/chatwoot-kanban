@@ -40,6 +40,7 @@ def config(**changes):
         {"rails_wrapper": ["sh", "-c", "echo secret"]},
         {"image": "example:latest"},
         {"chatwoot_database": "db;drop"},
+        {"external_url": "https://chat.example.com"},
     ],
 )
 def test_reject_ambiguous_or_sensitive_configuration(changes):

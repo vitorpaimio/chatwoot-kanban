@@ -44,9 +44,26 @@ compartilhado. Uninstall revoga a identidade e remove projeto sem `-v`; preserva
 volume/cofre/backups e remove mounts após desmontar containers. Também remove
 este Nginx; o acesso anterior ao Chatwoot, se existente, continua independente.
 
+## Proxy existente e cabeçalhos da API (09/10/2026)
+
+O Nginx ativa `underscores_in_headers on`: o token da API do Chatwoot chega em
+`api_access_token`, e o padrão do Nginx descarta esse cabeçalho, devolvendo 401
+a integrações que usam o gateway (issue #22).
+
+Quando um proxy HTTPS existente (Traefik, Coolify) fica na frente do gateway,
+`--external-url https://dominio` registra o campo opcional `external_url`. Ele
+passa a ser `PUBLIC_URL`, o que libera a checagem de `Origin`, e também a base
+do webhook. O Chatwoot 4.17+ envia webhooks por `SafeFetch`, que recusa o destino
+interno `http://<nome>_api:8000` sem `SAFE_FETCH_ALLOW_PRIVATE_NETWORK` (issue #21).
+Sem a opção, o callback interno continua igual. O campo pode ser incluído num
+`update`, é preservado nos seguintes e é recusado no Swarm. Ao trocar a URL, o
+webhook interno criado pela instalação é removido, para não haver dois webhooks.
+A rota do proxy até o gateway é responsabilidade de quem instala.
+
 ## Limites
 
 A certificação desta fase se limita ao Compose local ARM64, HTTP e imagens
-registradas nas evidências. TLS externo, contexto remoto, HA, outras arquiteturas
-e edição de um Nginx preexistente não estão certificados. Publicação depende da
+registradas nas evidências. TLS externo, inclusive com `--external-url`, contexto
+remoto, HA, outras arquiteturas e edição de um Nginx preexistente não estão
+certificados. Publicação depende da
 fase 5. Estado e chave de recuperação precisam ser guardados pelo operador.
