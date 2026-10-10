@@ -21,6 +21,7 @@ class Deployment(BaseModel):
     accounts: list[int] = Field(min_length=1)
     image: str
     public_url: str
+    external_url: str | None = None
     chatwoot_url: str
     chatwoot_service: str
     chatwoot_database_service: str
@@ -34,13 +35,16 @@ class Deployment(BaseModel):
     allow_local_image: bool = False
 
     @property
+    def origin(self) -> str:
+        """Origem usada pelos atendentes; no Compose, o proxy externo prevalece."""
+        return (self.external_url or self.public_url).rstrip("/")
+
+    @property
     def callback_url(self) -> str:
-        """Usa origem pública no Swarm; preserva o contrato local Compose."""
-        return (
-            self.public_url.rstrip("/")
-            if self.adapter == "swarm"
-            else f"http://{self.name}_api:8000"
-        )
+        """Usa origem pública no Swarm ou proxy externo; senão, a rede local."""
+        if self.adapter == "swarm" or self.external_url:
+            return self.origin
+        return f"http://{self.name}_api:8000"
 
     @model_validator(mode="after")
     def validate_contract(self) -> "Deployment":
@@ -57,7 +61,9 @@ class Deployment(BaseModel):
         ):
             if not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}", value):
                 raise ValueError("Identificador inválido")
-        for value in (self.public_url, self.chatwoot_url):
+        for value in (self.public_url, self.chatwoot_url, self.external_url or ""):
+            if not value:
+                continue
             url = urlsplit(value)
             if (
                 url.scheme not in ("http", "https")
@@ -83,6 +89,8 @@ class Deployment(BaseModel):
             not re.fullmatch(r"[a-zA-Z0-9_./-]+", v) for v in self.rails_wrapper
         ):
             raise ValueError("Wrapper deve conter apenas executável e caminhos")
+        if self.external_url and self.adapter != "compose":
+            raise ValueError("URL externa existe somente no adaptador Compose")
         if self.adapter == "compose":
             if not self.chatwoot_project or not re.fullmatch(
                 r"[a-z][a-z0-9_-]{1,62}", self.chatwoot_project

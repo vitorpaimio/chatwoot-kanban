@@ -48,8 +48,10 @@ class Lifecycle:
         if self.state.data:
             saved = Deployment.model_validate(self.state.data["config"]).model_dump()
             current = self.config.model_dump()
-            saved.pop("image")
-            current.pop("image")
+            # Imagem e proxy externo mudam por update; o restante é imutável.
+            for key in ("image", "external_url"):
+                saved.pop(key)
+                current.pop(key)
             if saved != current:
                 raise InspectionError("Configuração imutável difere do manifesto.")
         identity = self.state.data.get("identity")

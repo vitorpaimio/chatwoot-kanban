@@ -148,7 +148,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/vitorpaimio/chatwoot-kanban/
 No Compose, informe também `--public-url http://IP-DA-VPS:18080`. Para acesso só por
 túnel SSH, use `--public-url http://localhost:18080`; o gateway fica em loopback.
 O acesso HTTP externo deve ficar em uma rede confiável; HTTPS existente não é
-reconfigurado por este adaptador. Para várias contas, use `--accounts 1 2`; para
+reconfigurado por este adaptador. Se já houver um proxy HTTPS (Traefik, Coolify)
+encaminhando um domínio ao gateway, acrescente `--external-url https://DOMINIO`
+na instalação ou num `update`; o webhook e a checagem de origem passam a usar o
+domínio. Para várias contas, use `--accounts 1 2`; para
 todas as contas existentes, use `--all-accounts --yes`. Essa seleção acontece na
 primeira instalação. Retomadas e atualizações preservam as contas já configuradas;
 novas contas criadas depois não são incluídas automaticamente.
