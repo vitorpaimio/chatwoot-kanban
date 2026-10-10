@@ -6,6 +6,28 @@ e as versões seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/
 
 ## [Não lançado]
 
+## [0.2.0-rc.8] — 2026-10-10
+
+Versão candidata com correções de disponibilidade da API e do instalador Compose.
+
+### Corrigido
+
+- Contato apagado no Chatwoot não deixa mais a fila de sincronização repetindo 404:
+  a ausência é confirmada, o cartão sai do quadro com histórico preservado e a fila
+  termina em `gone`. Filas e entregas param após dez falhas, no estado `dead`, com
+  retomada manual (ADR-022).
+- A sonda da imagem usa `/health/live`, independente de falhas de negócio, e não
+  reinicia mais a API por problemas em uma conta (ADR-023).
+- O Nginx do instalador Compose repassa o cabeçalho `api_access_token`; a API do
+  Chatwoot deixa de responder 401 pelo gateway (#22).
+
+### Adicionado
+
+- Opção `--external-url` no instalador Compose para Chatwoot atrás de proxy HTTPS
+  existente (Traefik, Coolify). Define a origem e o webhook pelo domínio, evitando o
+  bloqueio do `SafeFetch` no Chatwoot 4.17+ e o 403 de origem; pode ser incluída num
+  `update` (#21, ADR-036).
+
 ## [0.2.0-rc.7] — 2026-09-28
 
 Versão candidata com transferência de negociações entre funis.
